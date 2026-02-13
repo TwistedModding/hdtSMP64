@@ -124,6 +124,23 @@
     -->
     <disable1stPersonViewPhysics>false</disable1stPersonViewPhysics>
 
+    <!-- ########## REDUCE BREAST/THIGH/BUTT PHYSICS WHILE CLOTHED ####### -->
+
+    <!--
+      clothedBodyPhysicsGravityFactor: (float 0-1) applied to secondary body
+      physics bones (breast, thigh, butt) when body armor (slot 32) is equipped.
+      0 disables most dynamic motion from gravity, 1 keeps default behavior.
+      If no value is set, default is 0.2.
+    -->
+    <clothedBodyPhysicsGravityFactor>0.2</clothedBodyPhysicsGravityFactor>
+
+    <!--
+      clothedBodyPhysicsMinDamping: (float 0-1) minimum linear/angular damping
+      enforced on those same bones while body armor is equipped.
+      Higher values settle motion faster. If no value is set, default is 0.85.
+    -->
+    <clothedBodyPhysicsMinDamping>0.85</clothedBodyPhysicsMinDamping>
+
     <!-- ##################### CUDA ####################################### -->
 
     <!--
