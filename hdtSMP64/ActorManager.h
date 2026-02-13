@@ -164,9 +164,20 @@ namespace hdt
 			float m_cosAngleFromCameraDirectionTimesSkeletonDistance = -1.;
 
 		private:
+			struct BodyBonePhysicsState
+			{
+				float gravityFactor = 1.0f;
+				float linearDamping = 0.0f;
+				float angularDamping = 0.0f;
+			};
+
 			bool isActiveInScene() const;
 			bool checkPhysics();
+			bool isBodyArmorEquipped() const;
+			static bool isSecondaryBodyPhysicsBone(const IDStr& name);
+			void applyClothedBodyPhysicsReduction(bool isClothed);
 
+			std::unordered_map<SkinnedMeshBone*, BodyBonePhysicsState> m_secondaryBoneDefaults;
 			bool isActive = false;
 			float currentWindFactor = 0.f;
 			std::vector<Armor> armors;
@@ -212,6 +223,11 @@ namespace hdt
 
 		// @brief Depending on this setting, we avoid to calculate the physics of the PC when it is in 1st person view.
 		bool m_disable1stPersonViewPhysics = false;
+
+		// @brief When body armor is equipped, reduce secondary body motion (breast, thigh, butt)
+		// by scaling gravity and enforcing stronger damping on matching dynamic bones.
+		float m_clothedBodyPhysicsGravityFactor = 0.2f;
+		float m_clothedBodyPhysicsMinDamping = 0.85f;
 
 	private:
 		void setSkeletonsActive();

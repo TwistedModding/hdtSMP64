@@ -120,6 +120,10 @@ namespace hdt
 					ActorManager::instance()->m_sampleSize = std::max(reader.readInt(), 1);
 				else if (reader.GetLocalName() == "disable1stPersonViewPhysics")
 					ActorManager::instance()->m_disable1stPersonViewPhysics = reader.readBool();
+				else if (reader.GetLocalName() == "clothedBodyPhysicsGravityFactor")
+					ActorManager::instance()->m_clothedBodyPhysicsGravityFactor = btClamped(reader.readFloat(), 0.0f, 1.0f);
+				else if (reader.GetLocalName() == "clothedBodyPhysicsMinDamping")
+					ActorManager::instance()->m_clothedBodyPhysicsMinDamping = btClamped(reader.readFloat(), 0.0f, 1.0f);
 				else
 				{
 					_WARNING("Unknown config : %s", reader.GetLocalName());

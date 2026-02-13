@@ -6,6 +6,7 @@
 #include "skse64/GameRTTI.h"
 #include "skse64/NiSerialization.h"
 #include <cinttypes>
+#include <cctype>
 #include "Offsets.h"
 #include "skse64/GameStreams.h"
 #include "skse64/GameData.h"
@@ -726,12 +727,14 @@ namespace hdt
 
 	void ActorManager::Skeleton::clear()
 	{
+		applyClothedBodyPhysicsReduction(false);
 		std::for_each(armors.begin(), armors.end(), [](Armor& armor) { armor.clearPhysics(); });
 		SkyrimPhysicsWorld::get()->removeSystemByNode(npc);
 		cleanHead();
 		head.headParts.clear();
 		head.headNode = nullptr;
 		armors.clear();
+		m_secondaryBoneDefaults.clear();
 	}
 
 	void ActorManager::Skeleton::calculateDistanceAndOrientationDifferenceFromSource(NiPoint3 sourcePosition, NiPoint3 sourceOrientation)
@@ -828,6 +831,77 @@ namespace hdt
 		return this->currentWindFactor;
 	}
 
+	bool ActorManager::Skeleton::isBodyArmorEquipped() const
+	{
+		const auto actor = DYNAMIC_CAST(skeletonOwner.get(), TESForm, Actor);
+		if (!actor)
+			return false;
+
+		constexpr int bodySlotMask = 1 << 2; // slot 32: body
+		return papyrusActor::GetWornForm(actor, bodySlotMask) != nullptr;
+	}
+
+	bool ActorManager::Skeleton::isSecondaryBodyPhysicsBone(const IDStr& name)
+	{
+		if (!name)
+			return false;
+
+		std::string boneName = name->cstr();
+		std::transform(boneName.begin(), boneName.end(), boneName.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+		return boneName.find("breast") != std::string::npos
+			|| boneName.find("butt") != std::string::npos
+			|| boneName.find("thigh") != std::string::npos;
+	}
+
+	void ActorManager::Skeleton::applyClothedBodyPhysicsReduction(bool isClothed)
+	{
+		const auto manager = ActorManager::instance();
+		const float gravityScale = btClamped(manager->m_clothedBodyPhysicsGravityFactor, 0.0f, 1.0f);
+		const float minDamping = btClamped(manager->m_clothedBodyPhysicsMinDamping, 0.0f, 1.0f);
+
+		if (!isClothed)
+		{
+			for (auto& entry : m_secondaryBoneDefaults)
+			{
+				auto* bone = entry.first;
+				const auto& state = entry.second;
+				if (!bone)
+					continue;
+				bone->m_gravityFactor = state.gravityFactor;
+				bone->m_rig.setDamping(state.linearDamping, state.angularDamping);
+			}
+			m_secondaryBoneDefaults.clear();
+			return;
+		}
+
+		for (auto& armor : armors)
+		{
+			if (!armor.m_physics)
+				continue;
+
+			for (auto& boneRef : armor.m_physics->getBones())
+			{
+				auto* bone = boneRef();
+				if (!bone || !isSecondaryBodyPhysicsBone(bone->m_name))
+					continue;
+
+				if (m_secondaryBoneDefaults.find(bone) == m_secondaryBoneDefaults.end())
+				{
+					btScalar linearDamping = 0.0f;
+					btScalar angularDamping = 0.0f;
+					bone->m_rig.getDamping(linearDamping, angularDamping);
+					m_secondaryBoneDefaults.emplace(bone, BodyBonePhysicsState{ bone->m_gravityFactor, linearDamping, angularDamping });
+				}
+
+				const auto& defaults = m_secondaryBoneDefaults[bone];
+				bone->m_gravityFactor = defaults.gravityFactor * gravityScale;
+				bone->m_rig.setDamping(std::max(defaults.linearDamping, minDamping), std::max(defaults.angularDamping, minDamping));
+			}
+		}
+	}
+
 	bool ActorManager::Skeleton::updateAttachedState(const NiNode* playerCell, bool deactivate = false)
 	{
 		// 1- Skeletons that aren't active in any scene are always detached, unless they are in the
@@ -866,6 +940,9 @@ namespace hdt
 		// We update the activity state of armors and head parts, and add and remove SkinnedMeshSystems to these parts in consequence.
 		// We set headparts as not active if the head isn't active (for example because it's hidden by a wig).
 		std::for_each(armors.begin(), armors.end(), [=](Armor& armor) { armor.updateActive(isActive); });
+
+		applyClothedBodyPhysicsReduction(isBodyArmorEquipped());
+
 		const bool isHeadActive = head.isActive;
 		std::for_each(head.headParts.begin(), head.headParts.end(), [=](Head::HeadPart& headPart) { headPart.updateActive(isHeadActive && isActive); });
 		return isActive;
