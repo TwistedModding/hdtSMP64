@@ -162,13 +162,15 @@ namespace hdt
 
 	using XMLValidationPair = std::pair<XSDValidationResult, SCHValidationResult>;
 
-	// The two flavours of template redundancy reported for one XML file: per-element
-	// tags that restate an inherited default, and whole <bone> declarations that only
-	// restate the auto-created default bone.
+	// Per-element tags that restate an inherited default. NOTE: the whole-<bone> "only
+	// restates the default, can be removed" warning was removed (issue #402). Whether such a
+	// bone is actually removable depends on mesh-skin binding / standalone-collider status / a
+	// position-dependent unnamed <bone-default> — none of which is knowable from the XML alone —
+	// so the warning advised deleting load-bearing bones and broke mods. CollectRedundantBone
+	// Declarations is kept for a future gear + mesh-aware reimplementation.
 	struct XmlRedundancyInfo
 	{
 		std::vector<TemplateRedundantChildInfo> redundantChildren;
-		std::vector<RedundantBoneInfo> redundantBones;
 	};
 
 	// Load xmlPath from disk once and collect both redundancy flavours from the parsed
@@ -190,7 +192,6 @@ namespace hdt
 			return result;
 
 		result.redundantChildren = CollectTemplateRedundantChildrenInfo(doc, &bytes);
-		result.redundantBones = CollectRedundantBoneDeclarations(doc, &bytes);
 		return result;
 	}
 
@@ -302,22 +303,6 @@ namespace hdt
 				continue;
 
 			emitTemplateRedundantWarning(info);
-		}
-
-		// Whole <bone> declarations that only restate the auto-created default bone:
-		// the engine would fabricate an identical body on demand, so the declaration
-		// is removable. See CollectRedundantBoneDeclarations for the comparison.
-		for (const auto& bone : redundancyInfo.redundantBones) {
-			const std::string named = bone.boneName.empty() ? std::string() : " \"" + bone.boneName + "\"";
-			std::string msg = xmlPath + ":" + std::to_string(bone.line) + ": " + bone.location +
-			                  " - <bone>" + named +
-			                  " only restates the default bone settings; the engine creates an"
-			                  " identical bone on demand, so this declaration is unnecessary and can be removed.";
-			report.warnings.push_back(msg);
-			report.hasWarnings = true;
-			out << "    [WARNING] " << bone.location << " (line " << bone.line << "): <bone>" << named
-				<< " only restates the default bone settings; the engine creates an identical bone on"
-				   " demand, so this declaration can be removed.\n";
 		}
 	}
 
