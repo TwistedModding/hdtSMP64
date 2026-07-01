@@ -584,11 +584,14 @@ namespace hdt
 
 	/// Cross-references an equipped item's physics XML node references against the live
 	/// actor skeleton and appends one violation line per node the skeleton does not
-	/// provide. Each line names the affected element role and the runtime consequence so
-	/// an author can see why their physics detaches. Emits nothing when the skeleton root
-	/// is null (the caller already reported that) or the XML is missing/malformed (the
-	/// schema-validation pass over these same equipped XMLs is what reports XML validity).
-	static void appendMissingBoneRefViolations(RE::NiNode* skeletonRoot, const std::string& xmlPath,
+	/// provide. `meshRoot` is the equipped item's 3D: a <bone> naming a node absent from the
+	/// skeleton but skinned by that mesh is not reported (the engine creates a body for it
+	/// from the mesh skin, no name lookup). Each line names the affected element role and the
+	/// runtime consequence so an author can see why their physics detaches. Emits nothing when
+	/// the skeleton root is null (the caller already reported that) or the XML is
+	/// missing/malformed (the schema-validation pass over these same equipped XMLs reports it).
+	static void appendMissingBoneRefViolations(RE::NiNode* skeletonRoot, RE::NiAVObject* meshRoot,
+		const std::string& xmlPath,
 		const std::unordered_map<RE::BSFixedString, RE::BSFixedString>& renameMap,
 		const std::string& skeletonName, std::vector<std::string>& out)
 	{
@@ -600,7 +603,7 @@ namespace hdt
 		for (const auto& kv : renameMap)
 			rename.emplace(kv.first.c_str(), kv.second.c_str());
 
-		for (const auto& m : FindMissingPhysicsXmlBoneRefs(skeletonRoot, xmlPath, rename)) {
+		for (const auto& m : FindMissingPhysicsXmlBoneRefs(skeletonRoot, meshRoot, xmlPath, rename)) {
 			std::string effect;
 			if (m.usedAsBone && m.constraintRefs > 0)
 				effect = "its <bone> body is skipped and " + std::to_string(m.constraintRefs) +
@@ -677,7 +680,7 @@ namespace hdt
 							if (!nifDiskPath.empty())
 								outNifScanViolations->push_back(nifDiskPath + ": equipped armor node is not a NiNode (physics XML: " + asset.xmlPath + ")");
 						}
-						appendMissingBoneRefViolations(skeleton.npc.get(), xmlPath, armor.renameMap, skeleton.name(), *outNifScanViolations);
+						appendMissingBoneRefViolations(skeleton.npc.get(), armor.armorWorn.get(), xmlPath, armor.renameMap, skeleton.name(), *outNifScanViolations);
 					}
 					result.push_back(std::move(asset));
 				}
@@ -712,7 +715,7 @@ namespace hdt
 							if (!nifDiskPath.empty())
 								outNifScanViolations->push_back(nifDiskPath + ": equipped headpart node is not a NiNode (physics XML: " + asset.xmlPath + ")");
 						}
-						appendMissingBoneRefViolations(skeleton.npc.get(), xmlPath, skeleton.head.renameMap, skeleton.name(), *outNifScanViolations);
+						appendMissingBoneRefViolations(skeleton.npc.get(), headPart.headPart.get(), xmlPath, skeleton.head.renameMap, skeleton.name(), *outNifScanViolations);
 					}
 					result.push_back(std::move(asset));
 				}

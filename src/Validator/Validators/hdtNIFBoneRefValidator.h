@@ -7,6 +7,7 @@
 namespace RE
 {
 	class NiNode;
+	class NiAVObject;
 }
 
 namespace hdt
@@ -36,6 +37,16 @@ namespace hdt
 	// runtime: it finds a NiNode below a non-NiNode parent, folds case, and rejects VR stubs
 	// exactly as the engine does — see issue #402.
 	//
+	// `meshRoot` is the equipped item's 3D (armor/headpart). A reference naming a node absent
+	// from the skeleton but skinned by that mesh is NOT reported: the engine creates a body for
+	// it from skinInstance->bones[] without any name lookup. This escape covers BOTH <bone>
+	// declarations and constraint endpoints. For a constraint it can miss a real drop (the
+	// endpoint's skin body may be built after the constraint in document order), which is an
+	// accepted trade under issue #402's policy — zero false positives, missed positives
+	// tolerated — since a spurious "absent" wastes authors' and users' time. All name matching
+	// (skeleton, skin set, rename) is case-insensitive, mirroring the engine's BSFixedString
+	// comparisons. `meshRoot` may be null (no skin escape then). See issue #402.
+	//
 	// A returned entry means SMP would also fail the lookup and therefore silently skip
 	// the bone / drop the constraint. The "-default" template element variants are ignored
 	// because their `name`/`bodyA`/`bodyB` carry template class names, not node references.
@@ -43,6 +54,7 @@ namespace hdt
 	// schema validator, which runs over the same equipped XMLs. `renameMap` may be empty.
 	std::vector<MissingBoneRef> FindMissingPhysicsXmlBoneRefs(
 		RE::NiNode* skeletonRoot,
+		RE::NiAVObject* meshRoot,
 		const std::string& xmlPath,
 		const std::unordered_map<std::string, std::string>& renameMap);
 }
