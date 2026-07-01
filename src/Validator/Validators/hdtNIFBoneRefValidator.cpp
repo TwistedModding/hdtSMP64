@@ -2,14 +2,12 @@
 
 #include "../Utils/hdtTemplateDefaults.h"  // isDefaultNodeName
 #include "../Utils/hdtValidatorFamily.h"   // familyForNode
-#include "NetImmerseUtils.h"               // readAllFile2
-#include "hdtNIFValidator.h"               // CollectNamedSkeletonNodes
+#include "NetImmerseUtils.h"               // readAllFile2, castNiNode
 
 #include <pugixml.hpp>
 
 #include <algorithm>
 #include <string>
-#include <unordered_set>
 
 namespace hdt
 {
@@ -22,6 +20,26 @@ namespace hdt
 		{
 			auto it = renameMap.find(name);
 			return it == renameMap.end() ? name : it->second;
+		}
+
+		// Mirror of SkyrimSystemCreator::findObjectByName (the runtime bone binder): look the
+		// resolved name up the exact way the engine does — GetObjectByName over the whole NPC
+		// subtree, then require the hit to be a NiNode. We resolve live against the skeleton
+		// instead of pre-collecting a NiNode-only name set (the old approach) so the report
+		// agrees with runtime in the cases that set missed: a named NiNode hanging *below* a
+		// non-NiNode parent is still found (GetObjectByName recurses the full tree, the old
+		// NiNode-only recursion stopped at the non-node parent), the match is case-folded like
+		// BSFixedString, and VR NiStream stubs are rejected by castNiNode exactly as the engine
+		// fails to bind them. So a reference is called "absent" iff findObjectByName would also
+		// return null and the engine would drop it — no false "absent" for a bone SMP resolves.
+		// (Limitation, see issue #402: a name that exists only as a mesh-skin bone — created by
+		// generateMeshBody from skinInstance->bones[] with no name lookup — is not in the NPC
+		// tree and is still reported; detecting it needs the equipped mesh, tracked separately.)
+		bool resolvesToSkeletonNode(RE::NiNode* skeletonRoot, const std::string& resolvedName)
+		{
+			if (!skeletonRoot || resolvedName.empty())
+				return false;
+			return castNiNode(skeletonRoot->GetObjectByName(RE::BSFixedString(resolvedName.c_str()))) != nullptr;
 		}
 
 		// Per-resolved-name accumulator: how many times, and in what roles, the XML reaches
@@ -37,7 +55,7 @@ namespace hdt
 		// Recursion (rather than first-level children) is needed because constraints may be
 		// nested inside <constraint-group> and bones/shapes are siblings under <system>.
 		void collectReferences(pugi::xml_node node,
-			const std::unordered_set<std::string>& nodeSet,
+			RE::NiNode* skeletonRoot,
 			const std::unordered_map<std::string, std::string>& renameMap,
 			std::unordered_map<std::string, MissingAcc>& missingByResolved)
 		{
@@ -45,8 +63,8 @@ namespace hdt
 				if (!written || written[0] == '\0')
 					return;
 				std::string resolved = applyRename(written, renameMap);
-				if (nodeSet.count(resolved))
-					return;  // resolves fine — SMP would find it
+				if (resolvesToSkeletonNode(skeletonRoot, resolved))
+					return;  // the engine's findObjectByName would bind it — not absent
 				auto& acc = missingByResolved[resolved];
 				if (acc.referenced.empty())
 					acc.referenced = written;
@@ -77,7 +95,7 @@ namespace hdt
 						break;
 					}
 				}
-				collectReferences(child, nodeSet, renameMap, missingByResolved);
+				collectReferences(child, skeletonRoot, renameMap, missingByResolved);
 			}
 		}
 	}  // namespace
@@ -94,12 +112,8 @@ namespace hdt
 		if (!doc.load_buffer(bytes.data(), bytes.size()))
 			return {};
 
-		std::vector<std::string> nodeNames;
-		CollectNamedSkeletonNodes(skeletonRoot, nodeNames);
-		std::unordered_set<std::string> nodeSet(nodeNames.begin(), nodeNames.end());
-
 		std::unordered_map<std::string, MissingAcc> missingByResolved;
-		collectReferences(doc, nodeSet, renameMap, missingByResolved);
+		collectReferences(doc, skeletonRoot, renameMap, missingByResolved);
 
 		std::vector<MissingBoneRef> missing;
 		missing.reserve(missingByResolved.size());

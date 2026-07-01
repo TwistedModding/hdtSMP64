@@ -26,12 +26,15 @@ namespace hdt
 	// `skeletonRoot` — the NPC node SMP resolves bones against at load time, which already
 	// contains the equipped item's merged + renamed nodes.
 	//
-	// Algorithm: (1) read+parse the XML; (2) collect the skeleton's node-name set via
-	// CollectNamedSkeletonNodes; (3) walk every element, gathering each <bone>'s `name`
-	// and each generic-/stiffspring-/conetwist-constraint's `bodyA`/`bodyB`; (4) push each
-	// reference through `renameMap` (mirroring SkyrimSystemCreator::getRenamedBone) and
-	// keep the ones whose resolved name is not in the set, merged per resolved name and
-	// sorted by it.
+	// Algorithm: (1) read+parse the XML; (2) walk every element, gathering each <bone>'s
+	// `name` and each generic-/stiffspring-/conetwist-constraint's `bodyA`/`bodyB`; (3) push
+	// each reference through `renameMap` (mirroring SkyrimSystemCreator::getRenamedBone) and
+	// resolve it live against `skeletonRoot` the exact way the engine's findObjectByName does
+	// — GetObjectByName over the whole subtree, then AsNode — keeping the ones that do NOT
+	// bind to a NiNode, merged per resolved name and sorted by it. Resolving live (rather than
+	// diffing against a pre-collected NiNode-only name set) is what makes the report agree with
+	// runtime: it finds a NiNode below a non-NiNode parent, folds case, and rejects VR stubs
+	// exactly as the engine does — see issue #402.
 	//
 	// A returned entry means SMP would also fail the lookup and therefore silently skip
 	// the bone / drop the constraint. The "-default" template element variants are ignored
