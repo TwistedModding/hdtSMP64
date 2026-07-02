@@ -183,6 +183,11 @@ jobs:
         run: cmake --build out/build/${{ matrix.preset }} --config Release
 
       - name: Run unit tests
+        # The runner executes the compiled test binary, but GitHub's runners do not support
+        # AVX-512, so an avx512-compiled test crashes on an illegal instruction. The tests
+        # validate SIMD-independent logic, so running them on the <=avx2 variants fully covers
+        # them; skip only the avx512 run (it still builds).
+        if: matrix.preset != 'vs2022-windows-avx512'
         run: ctest --test-dir out/build/${{ matrix.preset }} -C Release --output-on-failure
 
       - name: Verify build info embedded in DLL
