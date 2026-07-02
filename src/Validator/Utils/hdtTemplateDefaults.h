@@ -43,26 +43,4 @@ namespace hdt
 	std::unordered_map<std::string, std::string> CollectEquivalentDefaultTemplateAliases(
 		const pugi::xml_document& doc);
 
-	// One top-level <bone> declaration found to be redundant: its complete effective
-	// settings match the bone the engine would auto-create for an undeclared node.
-	struct RedundantBoneInfo
-	{
-		std::string location;  // positional path, e.g. /system[1]/bone[5]
-		std::string boneName;  // value of the bone's name attribute (for the message)
-		int line = 0;
-	};
-
-	// Find top-level <bone> declarations whose complete effective settings match the unnamed
-	// bone-default. NOTE (issue #402): "matches the default" does NOT imply "removable" — the
-	// engine only re-fabricates an identical bone when the node is skinned by a mesh (and the
-	// default is unchanged at the shape's position) or referenced elsewhere; a present-but-
-	// unskinned-unreferenced default <bone> is a standalone kinematic collider whose removal
-	// deletes a real body. None of that is knowable from the XML alone, so smp report NO LONGER
-	// turns this into removal advice. Retained as a building block for a future gear + mesh-aware
-	// check that resolves skin binding. Reuses the effective-default machinery; see the .cpp.
-	// When sourceBytes is provided, line numbers are computed from offsets.
-	std::vector<RedundantBoneInfo> CollectRedundantBoneDeclarations(
-		const pugi::xml_document& doc,
-		const std::string* sourceBytes = nullptr);
-
 }  // namespace hdt

@@ -162,12 +162,7 @@ namespace hdt
 
 	using XMLValidationPair = std::pair<XSDValidationResult, SCHValidationResult>;
 
-	// Per-element tags that restate an inherited default. NOTE: the whole-<bone> "only
-	// restates the default, can be removed" warning was removed (issue #402). Whether such a
-	// bone is actually removable depends on mesh-skin binding / standalone-collider status / a
-	// position-dependent unnamed <bone-default> — none of which is knowable from the XML alone —
-	// so the warning advised deleting load-bearing bones and broke mods. CollectRedundantBone
-	// Declarations is kept for a future gear + mesh-aware reimplementation.
+	// Per-element tags that restate an inherited default.
 	struct XmlRedundancyInfo
 	{
 		std::vector<TemplateRedundantChildInfo> redundantChildren;
@@ -549,9 +544,9 @@ namespace hdt
 		std::vector<std::string>& out)
 	{
 		// Single pass: enumerate all entries, collect NIFs and recurse into dirs.
-		// Previously used two passes (*.nif + FindExSearchLimitToDirectories) but
-		// FindExSearchLimitToDirectories is advisory and ignored by NTFS — Pass 2
-		// enumerated all files anyway, doubling the I/O cost on animation mods.
+		// A two-pass split (*.nif, then FindExSearchLimitToDirectories) would not be
+		// cheaper: the directories-only filter is advisory and ignored by NTFS, so each
+		// pass enumerates every file anyway, doubling the I/O cost on animation mods.
 		// One pass with FIND_FIRST_EX_LARGE_FETCH is faster overall.
 		const std::wstring dirW = dir.wstring();
 		WIN32_FIND_DATAW fd;

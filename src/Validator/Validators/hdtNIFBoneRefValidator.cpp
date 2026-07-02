@@ -37,17 +37,15 @@ namespace hdt
 
 		// Mirror of SkyrimSystemCreator::findObjectByName (the runtime bone binder): look the
 		// resolved name up the exact way the engine does — GetObjectByName over the whole NPC
-		// subtree, then require the hit to be a NiNode. We resolve live against the skeleton
-		// instead of pre-collecting a NiNode-only name set (the old approach) so the report
-		// agrees with runtime in the cases that set missed: a named NiNode hanging *below* a
-		// non-NiNode parent is still found (GetObjectByName recurses the full tree, the old
-		// NiNode-only recursion stopped at the non-node parent), the match is case-folded like
+		// subtree, then require the hit to be a NiNode. Resolving live keeps the report's notion
+		// of "present" identical to the engine's: a named NiNode below a non-NiNode parent is
+		// found (GetObjectByName recurses the full tree), matching is case-folded like
 		// BSFixedString, and VR NiStream stubs are rejected by castNiNode exactly as the engine
-		// fails to bind them. So a reference is called "absent" iff findObjectByName would also
-		// return null and the engine would drop it — no false "absent" for a bone SMP resolves.
-		// (Limitation, see issue #402: a name that exists only as a mesh-skin bone — created by
-		// generateMeshBody from skinInstance->bones[] with no name lookup — is not in the NPC
-		// tree; the caller suppresses those via the mesh skin-bound set (this stays skeleton-only).)
+		// fails to bind them. So a reference is "absent" iff findObjectByName would also return
+		// null and the engine would drop it — never a false "absent" for a bone SMP resolves.
+		// (A name that exists only as a mesh-skin bone — created by generateMeshBody from
+		// skinInstance->bones[] with no name lookup — is not in the NPC tree; the caller
+		// suppresses those via the mesh skin-bound set, so this function stays skeleton-only.)
 		bool resolvesToSkeletonNode(RE::NiNode* skeletonRoot, const std::string& resolvedName)
 		{
 			if (!skeletonRoot || resolvedName.empty())

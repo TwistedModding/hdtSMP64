@@ -32,10 +32,9 @@ namespace hdt
 	// each reference through `renameMap` (mirroring SkyrimSystemCreator::getRenamedBone) and
 	// resolve it live against `skeletonRoot` the exact way the engine's findObjectByName does
 	// — GetObjectByName over the whole subtree, then AsNode — keeping the ones that do NOT
-	// bind to a NiNode, merged per resolved name and sorted by it. Resolving live (rather than
-	// diffing against a pre-collected NiNode-only name set) is what makes the report agree with
-	// runtime: it finds a NiNode below a non-NiNode parent, folds case, and rejects VR stubs
-	// exactly as the engine does — see issue #402.
+	// bind to a NiNode, merged per resolved name and sorted by it. Live resolution keeps
+	// "present" identical to the engine's: a NiNode below a non-NiNode parent is found, the
+	// match is case-folded, and VR stubs are rejected exactly as the engine rejects them.
 	//
 	// `meshRoot` is the equipped item's 3D (armor/headpart). A reference naming a node absent
 	// from the skeleton but skinned by that mesh is NOT reported: the engine creates a body for
