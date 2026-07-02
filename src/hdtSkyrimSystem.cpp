@@ -640,6 +640,7 @@ namespace hdt
 		RE::BSFixedString name = getRenamedBone(m_reader->getAttribute("name"));
 		if (findBoneFromIndex(name)) {
 			logger::warn("Bone {} already exists, skipped", name.c_str());
+			m_reader->skipCurrentElement();
 			return;
 		}
 
