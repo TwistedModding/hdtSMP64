@@ -924,23 +924,24 @@ namespace hdt
 					continue;
 
 				switch (familyForNode(localName)) {
-				case Family::Bone: {
-					const char* name = node.attribute("name").value();
-					if (name[0] == '\0')
+				case Family::Bone:
+					{
+						const char* name = node.attribute("name").value();
+						if (name[0] == '\0')
+							break;
+						std::string key = ToLowerAscii(name);
+						if (touched.count(key)) {
+							InertBoneInfo info;
+							info.location = BuildNodeLocationPath(node);
+							info.boneName = TrimAsciiWhitespace(name);
+							if (sourceBytes)
+								info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
+							out.push_back(std::move(info));
+						} else {
+							touched.insert(std::move(key));
+						}
 						break;
-					std::string key = ToLowerAscii(name);
-					if (touched.count(key)) {
-						InertBoneInfo info;
-						info.location = BuildNodeLocationPath(node);
-						info.boneName = TrimAsciiWhitespace(name);
-						if (sourceBytes)
-							info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
-						out.push_back(std::move(info));
-					} else {
-						touched.insert(std::move(key));
 					}
-					break;
-				}
 				case Family::Generic:
 				case Family::StiffSpring:
 				case Family::ConeTwist:

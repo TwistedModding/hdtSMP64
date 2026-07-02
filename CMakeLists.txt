@@ -30,12 +30,12 @@ option(ENABLE_SKYRIM_SE "Enable support for Skyrim SE in the dynamic runtime fea
 option(ENABLE_SKYRIM_AE "Enable support for Skyrim AE in the dynamic runtime feature." ON)
 option(ENABLE_SKYRIM_VR "Enable support for Skyrim VR in the dynamic runtime feature." ON)
 
-# Headless doctest suite for the XML reader contract and the validator's inert-<bone>
-# warning (a dev/CI tool, never packaged; no CommonLibSSE), mirroring tests/patterns.
+# Headless doctest suite for the XML reader contract and the validator's inert-<bone> warning (a dev/CI tool, never
+# packaged; no CommonLibSSE), mirroring tests/patterns.
 option(BUILD_VALIDATOR_TESTS "Build the validator/XML-reader doctest suite" OFF)
 
-# CommonLibSSE consumes a variable of this exact name to gate its own Catch2-based
-# tests; keep them off (Catch2 is not in our vcpkg manifest).
+# CommonLibSSE consumes a variable of this exact name to gate its own Catch2-based tests; keep them off (Catch2 is not
+# in our vcpkg manifest).
 set(BUILD_TESTS OFF)
 
 # default definitions
