@@ -183,7 +183,11 @@ namespace hdt
 		}
 
 		logger::warn("Bone {} used before being created, trying to create it with current default values", name.c_str());
-		return createBoneFromNodeName(name);
+		// Create from the renamed name too: the lookup above used it, and under a rename
+		// map (skeleton merge / DynamicHDT) the raw name's node typically no longer
+		// exists — creating from the raw name would drop the reference or split the
+		// bone into two identities. Constraint readers already create from renamed names.
+		return createBoneFromNodeName(getRenamedBone(name));
 	}
 
 	RE::BSFixedString SkyrimSystemCreator::getRenamedBone(const RE::BSFixedString& name)
