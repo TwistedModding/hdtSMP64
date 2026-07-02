@@ -43,20 +43,30 @@ namespace hdt
 	std::unordered_map<std::string, std::string> CollectEquivalentDefaultTemplateAliases(
 		const pugi::xml_document& doc);
 
-	// One top-level <bone> declaration found to be redundant: its complete effective
-	// settings match the bone the engine would auto-create for an undeclared node.
-	struct RedundantBoneInfo
+	// One top-level <bone> declaration the engine never uses: by the time the parser
+	// reaches it, an earlier element in the same file has already claimed the same
+	// (case-folded) bone name, so readOrUpdateBone skips it ("Bone X already exists,
+	// skipped") — or, when the name resolves to no node, repeats the identical failed
+	// lookup. Removing such a declaration cannot change behaviour.
+	struct InertBoneInfo
 	{
 		std::string location;  // positional path, e.g. /system[1]/bone[5]
 		std::string boneName;  // value of the bone's name attribute (for the message)
 		int line = 0;
 	};
 
-	// Find top-level <bone> declarations that only restate the auto-created default
-	// bone (the unnamed bone-default) and are therefore removable with no behavioural
-	// change. Reuses the effective-default machinery; see the .cpp for the conservative
-	// comparison. When sourceBytes is provided, line numbers are computed from offsets.
-	std::vector<RedundantBoneInfo> CollectRedundantBoneDeclarations(
+	// Find top-level <bone> declarations that are inert — never acted on by the engine,
+	// so removable with zero behaviour change — because an earlier same-file element
+	// claims the same bone name first: an earlier <bone>, a constraint
+	// bodyA/bodyB endpoint, or a can-/no-collide-with-bone shape reference — the engine
+	// creates a bone at the first of these it reads, and every later <bone> of that name
+	// is skipped. The walk follows document order (recursing into constraint-group) and
+	// folds case like BSFixedString; renaming cannot break the equivalence because both
+	// occurrences go through the same rename. Only certainty is reported: creators the
+	// engine resolves through data outside this file (mesh skinning) are ignored, so the
+	// walk under-reports rather than ever flagging a live declaration.
+	// When sourceBytes is provided, line numbers are computed from offsets.
+	std::vector<InertBoneInfo> CollectInertBoneDeclarations(
 		const pugi::xml_document& doc,
 		const std::string* sourceBytes = nullptr);
 

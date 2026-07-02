@@ -43,6 +43,16 @@ namespace hdt
 		return s.substr(start, end - start + 1);
 	}
 
+	// ASCII lower-case copy. Name comparisons folded with this mirror the engine's
+	// case-insensitive BSFixedString matching, so validator-side lookups agree with
+	// runtime lookups regardless of how an author cased a name.
+	inline std::string ToLowerAscii(std::string s)
+	{
+		std::transform(s.begin(), s.end(), s.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return s;
+	}
+
 	// Build a sorted, comma-separated string from a set of strings.
 	inline std::string JoinSortedSet(const std::unordered_set<std::string>& values)
 	{
