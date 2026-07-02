@@ -162,10 +162,13 @@ namespace hdt
 
 	using XMLValidationPair = std::pair<XSDValidationResult, SCHValidationResult>;
 
-	// Per-element tags that restate an inherited default.
+	// The two flavours of per-file XML redundancy: element tags that restate an
+	// inherited default, and top-level <bone> declarations the engine skips because
+	// an earlier same-file element already claims the name (first use creates the bone).
 	struct XmlRedundancyInfo
 	{
 		std::vector<TemplateRedundantChildInfo> redundantChildren;
+		std::vector<InertBoneInfo> inertBones;
 	};
 
 	// Load xmlPath from disk once and collect both redundancy flavours from the parsed
@@ -187,6 +190,7 @@ namespace hdt
 			return result;
 
 		result.redundantChildren = CollectTemplateRedundantChildrenInfo(doc, &bytes);
+		result.inertBones = CollectInertBoneDeclarations(doc, &bytes);
 		return result;
 	}
 
@@ -298,6 +302,24 @@ namespace hdt
 				continue;
 
 			emitTemplateRedundantWarning(info);
+		}
+
+		// Top-level <bone> declarations the engine skips because an earlier element in this
+		// file already claims the name — the first use creates the bone ("Bone X already
+		// exists, skipped"), so these declarations are inert and provably removable.
+		for (const auto& bone : redundancyInfo.inertBones) {
+			const std::string named = bone.boneName.empty() ? std::string() : " \"" + bone.boneName + "\"";
+			std::string msg = xmlPath + ":" + std::to_string(bone.line) + ": " + bone.location +
+			                  " - <bone>" + named +
+			                  " is never used: an earlier <bone> or bone reference in this file already"
+			                  " claims this name (the first use creates the bone), so the engine skips"
+			                  " this declaration. It can be removed.";
+			report.warnings.push_back(msg);
+			report.hasWarnings = true;
+			out << "    [WARNING] " << bone.location << " (line " << bone.line << "): <bone>" << named
+				<< " is never used: an earlier <bone> or bone reference in this file already claims"
+				   " this name (the first use creates the bone), so the engine skips this declaration;"
+				   " it can be removed.\n";
 		}
 	}
 

@@ -886,6 +886,85 @@ namespace hdt
 			return aliases;
 		}
 
+		// Document-order walk behind CollectInertBoneDeclarations.
+		//
+		// A <bone> declaration is "inert" when the engine never acts on it: the physics
+		// system built from the file — every bone, constraint, and collision — is
+		// byte-for-byte the same whether the declaration is present or deleted.
+		//
+		// Why a second claim of a name is always inert: the engine creates a bone at the
+		// FIRST element naming it — a <bone> declaration, a constraint bodyA/bodyB
+		// endpoint (findBones), or a can-/no-collide-with-bone shape reference
+		// (getOrCreateBone) — and readOrUpdateBone skips any later <bone> of an
+		// already-claimed name ("Bone X already exists, skipped"). If instead the name
+		// resolves to no skeleton node, the first claim creates nothing and the later
+		// <bone> repeats the identical failed lookup. In both worlds the later
+		// declaration contributes nothing, whatever the skeleton looks like.
+		//
+		// Mechanics: `touched` carries every (case-folded) bone name an earlier element
+		// already claimed. "-default" template elements are skipped throughout — their
+		// name/bodyA/bodyB carry template class names, not skeleton nodes, and defining
+		// them creates no bone. Recursion descends only into constraint-group, mirroring
+		// the runtime reader's dispatch.
+		void collectInertBonesInOrder(pugi::xml_node parent,
+			std::unordered_set<std::string>& touched,
+			const std::string* sourceBytes,
+			std::vector<InertBoneInfo>& out)
+		{
+			const auto touch = [&touched](const char* written) {
+				if (written && written[0] != '\0')
+					touched.insert(ToLowerAscii(written));
+			};
+
+			for (auto node = parent.first_child(); node; node = node.next_sibling()) {
+				if (node.type() != pugi::node_element)
+					continue;
+				const std::string localName = std::string(XmlLocalName(node.name()));
+				if (isDefaultNodeName(localName))
+					continue;
+
+				switch (familyForNode(localName)) {
+				case Family::Bone: {
+					const char* name = node.attribute("name").value();
+					if (name[0] == '\0')
+						break;
+					std::string key = ToLowerAscii(name);
+					if (touched.count(key)) {
+						InertBoneInfo info;
+						info.location = BuildNodeLocationPath(node);
+						info.boneName = TrimAsciiWhitespace(name);
+						if (sourceBytes)
+							info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
+						out.push_back(std::move(info));
+					} else {
+						touched.insert(std::move(key));
+					}
+					break;
+				}
+				case Family::Generic:
+				case Family::StiffSpring:
+				case Family::ConeTwist:
+					touch(node.attribute("bodyA").value());
+					touch(node.attribute("bodyB").value());
+					break;
+				case Family::PerVertex:
+				case Family::PerTriangle:
+					for (auto child = node.first_child(); child; child = child.next_sibling()) {
+						if (child.type() != pugi::node_element)
+							continue;
+						const std::string_view childName = XmlLocalName(child.name());
+						if (childName == "can-collide-with-bone" || childName == "no-collide-with-bone")
+							touch(child.text().get());
+					}
+					break;
+				default:
+					if (localName == "constraint-group")
+						collectInertBonesInOrder(node, touched, sourceBytes, out);
+					break;
+				}
+			}
+		}
+
 	}  // anonymous namespace
 
 	// ── Public API ────────────────────────────────────────────────────────────
@@ -936,6 +1015,20 @@ namespace hdt
 		const pugi::xml_document& doc)
 	{
 		return collectEquivalentDefaultTemplateAliases(doc);
+	}
+
+	std::vector<InertBoneInfo> CollectInertBoneDeclarations(
+		const pugi::xml_document& doc,
+		const std::string* sourceBytes)
+	{
+		std::vector<InertBoneInfo> out;
+		auto sysNode = findSystemNode(doc);
+		if (!sysNode)
+			return out;
+
+		std::unordered_set<std::string> touched;
+		collectInertBonesInOrder(sysNode, touched, sourceBytes, out);
+		return out;
 	}
 
 }  // namespace hdt
