@@ -439,8 +439,8 @@ bool SMPDebug_Execute(
 				includeWarnings = true;
 				return true;
 			}
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Unknown report mode: %s", arg);
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Usage: smp report [gear] [warnings]");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Unknown report mode: %s", arg);
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Usage: smp report [gear] [warnings]");
 			return false;
 		};
 
@@ -448,17 +448,17 @@ bool SMPDebug_Execute(
 			return true;
 
 		if (s_validationRunning.exchange(true)) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Validation is already running.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Validation is already running.");
 			return true;
 		}
 		if (gearOnly && includeWarnings) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Equipped gear report (with warnings) started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Equipped gear report (with warnings) started in background. Results will appear when complete.");
 		} else if (gearOnly) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Equipped gear report (errors only) started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Equipped gear report (errors only) started in background. Results will appear when complete.");
 		} else if (includeWarnings) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report (with warnings) started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Report (with warnings) started in background. Results will appear when complete.");
 		} else {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report (errors only) started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Report (errors only) started in background. Results will appear when complete.");
 		}
 		std::thread([gearOnly, includeWarnings]() {
 			try {
@@ -471,14 +471,14 @@ bool SMPDebug_Execute(
 				auto* console = RE::ConsoleLog::GetSingleton();
 				if (includeWarnings) {
 					console->Print(
-						"[HDT-SMP] %s complete in %.2fs: %d XML(s) found, %d passed, %d failed, %d warning(s)",
+						"[Validator] %s complete in %.2fs: %d XML(s) found, %d passed, %d failed, %d warning(s)",
 						validationLabel,
 						result.elapsedSeconds,
 						result.totalXMLsFound, result.xmlPassCount, result.xmlErrorCount,
 						(int)result.warnings.size());
 				} else {
 					console->Print(
-						"[HDT-SMP] %s complete in %.2fs: %d XML(s) found, %d failed (errors only)",
+						"[Validator] %s complete in %.2fs: %d XML(s) found, %d failed (errors only)",
 						validationLabel,
 						result.elapsedSeconds,
 						result.totalXMLsFound,
@@ -486,18 +486,18 @@ bool SMPDebug_Execute(
 				}
 				if (!reportPath.empty()) {
 					if (includeWarnings) {
-						console->Print("[HDT-SMP] Report written to: %s", reportPath.c_str());
+						console->Print("[Validator] Report written to: %s", reportPath.c_str());
 					} else {
-						console->Print("[HDT-SMP] Errors-only report written to: %s", reportPath.c_str());
+						console->Print("[Validator] Errors-only report written to: %s", reportPath.c_str());
 					}
 				} else {
-					console->Print("[HDT-SMP] Warning: report file could not be written");
+					console->Print("[Validator] Warning: report file could not be written");
 				}
 			} catch (const std::exception& e) {
-				RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report failed with error: %s", e.what());
+				RE::ConsoleLog::GetSingleton()->Print("[Validator] Report failed with error: %s", e.what());
 				logger::error("[Validator] smp report threw: {}", e.what());
 			} catch (...) {
-				RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report failed with an unknown error");
+				RE::ConsoleLog::GetSingleton()->Print("[Validator] Report failed with an unknown error");
 				logger::error("[Validator] smp report threw an unknown exception");
 			}
 			s_validationRunning.store(false);
