@@ -338,10 +338,11 @@ bool SMPDebug_Execute(
 		console->Print("    Disable SMP simulation.");
 		console->Print("  smp QueryOverride");
 		console->Print("    Print current dynamic override data.");
-		console->Print("  smp report [gear] [error]");
+		console->Print("  smp report [gear] [warnings]");
 		console->Print("    Run the physics-asset validator in the background and write a report file.");
-		console->Print("    gear  = validate equipped gear only.");
-		console->Print("    error = write an errors-only report (no warnings/info).");
+		console->Print("    Default: errors only (no warnings/info).");
+		console->Print("    gear     = validate equipped gear only.");
+		console->Print("    warnings = also include warnings and info in the report.");
 		return true;
 	}
 
@@ -426,7 +427,7 @@ bool SMPDebug_Execute(
 		static std::atomic<bool> s_validationRunning{ false };
 
 		bool gearOnly = false;
-		bool errorReport = false;
+		bool includeWarnings = false;  // default: errors only (an explicit 'warnings' opts in)
 		auto parseValidateModeArg = [&](const char* arg) {
 			if (arg[0] == '\0')
 				return true;
@@ -434,12 +435,12 @@ bool SMPDebug_Execute(
 				gearOnly = true;
 				return true;
 			}
-			if (_stricmp(arg, "error") == 0) {
-				errorReport = true;
+			if (_stricmp(arg, "warnings") == 0) {
+				includeWarnings = true;
 				return true;
 			}
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Unknown report mode: %s", arg);
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Usage: smp report [gear] [error]");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Unknown report mode: %s", arg);
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Usage: smp report [gear] [warnings]");
 			return false;
 		};
 
@@ -447,56 +448,56 @@ bool SMPDebug_Execute(
 			return true;
 
 		if (s_validationRunning.exchange(true)) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Validation is already running.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Validation is already running.");
 			return true;
 		}
-		if (gearOnly && errorReport) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Equipped gear report (error report) started in background. Results will appear when complete.");
+		if (gearOnly && includeWarnings) {
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Equipped gear report (with warnings) started in background. Results will appear when complete.");
 		} else if (gearOnly) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Equipped gear report started in background. Results will appear when complete.");
-		} else if (errorReport) {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report (error report) started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Equipped gear report (errors only) started in background. Results will appear when complete.");
+		} else if (includeWarnings) {
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Report (with warnings) started in background. Results will appear when complete.");
 		} else {
-			RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report started in background. Results will appear when complete.");
+			RE::ConsoleLog::GetSingleton()->Print("[Validator] Report (errors only) started in background. Results will appear when complete.");
 		}
-		std::thread([gearOnly, errorReport]() {
+		std::thread([gearOnly, includeWarnings]() {
 			try {
 				const char* validationLabel = gearOnly ? "Equipped gear report" : "Report";
 				std::string reportPath;
 				auto result = hdt::ValidatePhysicsAssets(
 					reportPath,
 					gearOnly,
-					errorReport ? hdt::ValidationReportMode::ErrorsOnly : hdt::ValidationReportMode::Full);
+					includeWarnings ? hdt::ValidationReportMode::Full : hdt::ValidationReportMode::ErrorsOnly);
 				auto* console = RE::ConsoleLog::GetSingleton();
-				if (errorReport) {
+				if (includeWarnings) {
 					console->Print(
-						"[HDT-SMP] %s complete in %.2fs: %d XML(s) found, %d failed (error report: errors only)",
-						validationLabel,
-						result.elapsedSeconds,
-						result.totalXMLsFound,
-						result.xmlErrorCount);
-				} else {
-					console->Print(
-						"[HDT-SMP] %s complete in %.2fs: %d XML(s) found, %d passed, %d failed, %d warning(s)",
+						"[Validator] %s complete in %.2fs: %d XML(s) found, %d passed, %d failed, %d warning(s)",
 						validationLabel,
 						result.elapsedSeconds,
 						result.totalXMLsFound, result.xmlPassCount, result.xmlErrorCount,
 						(int)result.warnings.size());
+				} else {
+					console->Print(
+						"[Validator] %s complete in %.2fs: %d XML(s) found, %d failed (errors only)",
+						validationLabel,
+						result.elapsedSeconds,
+						result.totalXMLsFound,
+						result.xmlErrorCount);
 				}
 				if (!reportPath.empty()) {
-					if (errorReport) {
-						console->Print("[HDT-SMP] Errors-only report written to: %s", reportPath.c_str());
+					if (includeWarnings) {
+						console->Print("[Validator] Report written to: %s", reportPath.c_str());
 					} else {
-						console->Print("[HDT-SMP] Report written to: %s", reportPath.c_str());
+						console->Print("[Validator] Errors-only report written to: %s", reportPath.c_str());
 					}
 				} else {
-					console->Print("[HDT-SMP] Warning: report file could not be written");
+					console->Print("[Validator] Warning: report file could not be written");
 				}
 			} catch (const std::exception& e) {
-				RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report failed with error: %s", e.what());
+				RE::ConsoleLog::GetSingleton()->Print("[Validator] Report failed with error: %s", e.what());
 				logger::error("[Validator] smp report threw: {}", e.what());
 			} catch (...) {
-				RE::ConsoleLog::GetSingleton()->Print("[HDT-SMP] Report failed with an unknown error");
+				RE::ConsoleLog::GetSingleton()->Print("[Validator] Report failed with an unknown error");
 				logger::error("[Validator] smp report threw an unknown exception");
 			}
 			s_validationRunning.store(false);
@@ -727,7 +728,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 
 		unusedCommand->functionName = "SMPDebug";
 		unusedCommand->shortName = "smp";
-		unusedCommand->helpString = "smp <help|reset|report [gear] [error]>";
+		unusedCommand->helpString = "smp <help|reset|report [gear] [warnings]>";
 		unusedCommand->referenceFunction = 0;
 		unusedCommand->numParams = 3;
 		unusedCommand->params = params;
