@@ -886,79 +886,84 @@ namespace hdt
 			return aliases;
 		}
 
-		// Detect top-level <bone> declarations whose complete effective settings are
-		// identical to the bone the engine auto-creates on demand for an undeclared
-		// node — the unnamed bone-default, a kinematic (mass-0) body.
+		// Document-order walk behind CollectInertBoneDeclarations.
 		//
-		// Why these are removable: when a node is referenced by a constraint or shape
-		// but has no <bone> of its own, FSMP fabricates one from getBoneTemplate("")
-		// (the unnamed bone-default). So a <bone> that only restates that default adds
-		// nothing — a referenced node would get an identical body anyway, and an
-		// unreferenced one leaves the declaration inert — and can be deleted either way.
+		// A <bone> declaration is "inert" when the engine never acts on it: the physics
+		// system built from the file — every bone, constraint, and collision — is
+		// byte-for-byte the same whether the declaration is present or deleted.
 		//
-		// The check reuses the same effective-template machinery as the redundant-child
-		// and template-equivalence walks: step through top-level nodes in document order,
-		// keep boneTemplates[""] current as bone-default nodes are seen, and for each
-		// plain <bone> build its full effective FieldMap (inherited template + own field
-		// tags + collision-list overrides) exactly as a bone-default's is built, then
-		// compare it to boneTemplates[""] at that point.
+		// Why a second claim of a name is always inert: the engine creates a bone at the
+		// FIRST element naming it — a <bone> declaration, a constraint bodyA/bodyB
+		// endpoint (findBones), or a can-/no-collide-with-bone shape reference
+		// (getOrCreateBone) — and readOrUpdateBone skips any later <bone> of an
+		// already-claimed name ("Bone X already exists, skipped"). If instead the name
+		// resolves to no skeleton node, the first claim creates nothing and the later
+		// <bone> repeats the identical failed lookup. In both worlds the later
+		// declaration contributes nothing, whatever the skeleton looks like.
 		//
-		// It is conservative in both directions. Every element child either overwrites a
-		// known field key or, being unmodelled, injects its own tag-name key — so a bone
-		// carrying anything beyond the defaults (a non-default value, a collision-list
-		// override, an unexpected child) ends up with a FieldMap that differs from the
-		// default and is left alone. And with the .sch defaults absent, boneTemplates[""]
-		// holds fewer keys, so an explicit non-default field can only fail to match —
-		// the walk under-reports rather than ever flagging a non-default bone.
-		static std::vector<RedundantBoneInfo> collectRedundantBoneDeclarations(
-			const pugi::xml_document& doc,
-			const std::string* sourceBytes)
+		// Mechanics: `touched` carries every (case-folded) bone name an earlier element
+		// already claimed. "-default" template elements are skipped throughout — their
+		// name/bodyA/bodyB carry template class names, not skeleton nodes, and defining
+		// them creates no bone. Recursion descends only into constraint-group, mirroring
+		// the runtime reader's dispatch.
+		void collectInertBonesInOrder(pugi::xml_node parent,
+			std::unordered_set<std::string>& touched,
+			const std::string* sourceBytes,
+			std::vector<InertBoneInfo>& out)
 		{
-			std::vector<RedundantBoneInfo> out;
-			auto sysNode = findSystemNode(doc);
-			if (!sysNode)
-				return out;
+			const auto touch = [&touched](const char* written) {
+				if (written && written[0] != '\0')
+					touched.insert(ToLowerAscii(written));
+			};
 
-			const auto baseDefaults = makeBaseDefaults();
-			TemplateMap boneTemplates;
-			{
-				auto it = baseDefaults.find(Family::Bone);
-				boneTemplates[""] = (it != baseDefaults.end()) ? it->second : FieldMap{};
-			}
-
-			for (auto node = sysNode.first_child(); node; node = node.next_sibling()) {
+			for (auto node = parent.first_child(); node; node = node.next_sibling()) {
 				if (node.type() != pugi::node_element)
 					continue;
-
 				const std::string localName = std::string(XmlLocalName(node.name()));
-				// Only the bone family touches boneTemplates; everything else is irrelevant
-				// to both the inheritance state and the candidate set, so skip it.
-				if (familyForNode(localName) != Family::Bone)
+				if (isDefaultNodeName(localName))
 					continue;
 
-				const bool isDefault = isDefaultNodeName(localName);  // "bone-default"
-				// Same effective-map construction as the bone-default templates, so a <bone>
-				// and an equivalent bone-default normalise to the same map and compare equal.
-				FieldMap effective = computeNodeEffectiveFields(node, Family::Bone, isDefault, boneTemplates);
-
-				if (isDefault) {
-					const std::string templateName = TrimAsciiWhitespace(node.attribute("name").as_string());
-					boneTemplates[templateName] = std::move(effective);
-					continue;
-				}
-
-				auto defaultIt = boneTemplates.find("");
-				if (defaultIt != boneTemplates.end() && effective == defaultIt->second) {
-					RedundantBoneInfo info;
-					info.location = BuildNodeLocationPath(node);
-					info.boneName = TrimAsciiWhitespace(node.attribute("name").as_string());
-					if (sourceBytes)
-						info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
-					out.push_back(std::move(info));
+				switch (familyForNode(localName)) {
+				case Family::Bone:
+					{
+						const char* name = node.attribute("name").value();
+						if (name[0] == '\0')
+							break;
+						std::string key = ToLowerAscii(name);
+						if (touched.count(key)) {
+							InertBoneInfo info;
+							info.location = BuildNodeLocationPath(node);
+							info.boneName = TrimAsciiWhitespace(name);
+							if (sourceBytes)
+								info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
+							out.push_back(std::move(info));
+						} else {
+							touched.insert(std::move(key));
+						}
+						break;
+					}
+				case Family::Generic:
+				case Family::StiffSpring:
+				case Family::ConeTwist:
+					touch(node.attribute("bodyA").value());
+					touch(node.attribute("bodyB").value());
+					break;
+				case Family::PerVertex:
+				case Family::PerTriangle:
+					for (auto child = node.first_child(); child; child = child.next_sibling()) {
+						if (child.type() != pugi::node_element)
+							continue;
+						const std::string_view childName = XmlLocalName(child.name());
+						if (childName == "can-collide-with-bone" || childName == "no-collide-with-bone")
+							touch(child.text().get());
+					}
+					break;
+				default:
+					if (localName == "constraint-group")
+						collectInertBonesInOrder(node, touched, sourceBytes, out);
+					break;
 				}
 			}
-
-			return out;
 		}
 
 	}  // anonymous namespace
@@ -1013,11 +1018,18 @@ namespace hdt
 		return collectEquivalentDefaultTemplateAliases(doc);
 	}
 
-	std::vector<RedundantBoneInfo> CollectRedundantBoneDeclarations(
+	std::vector<InertBoneInfo> CollectInertBoneDeclarations(
 		const pugi::xml_document& doc,
 		const std::string* sourceBytes)
 	{
-		return collectRedundantBoneDeclarations(doc, sourceBytes);
+		std::vector<InertBoneInfo> out;
+		auto sysNode = findSystemNode(doc);
+		if (!sysNode)
+			return out;
+
+		std::unordered_set<std::string> touched;
+		collectInertBonesInOrder(sysNode, touched, sourceBytes, out);
+		return out;
 	}
 
 }  // namespace hdt

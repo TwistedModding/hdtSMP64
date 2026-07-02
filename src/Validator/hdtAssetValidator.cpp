@@ -162,13 +162,13 @@ namespace hdt
 
 	using XMLValidationPair = std::pair<XSDValidationResult, SCHValidationResult>;
 
-	// The two flavours of template redundancy reported for one XML file: per-element
-	// tags that restate an inherited default, and whole <bone> declarations that only
-	// restate the auto-created default bone.
+	// The two flavours of per-file XML redundancy: element tags that restate an
+	// inherited default, and top-level <bone> declarations the engine skips because
+	// an earlier same-file element already claims the name (first use creates the bone).
 	struct XmlRedundancyInfo
 	{
 		std::vector<TemplateRedundantChildInfo> redundantChildren;
-		std::vector<RedundantBoneInfo> redundantBones;
+		std::vector<InertBoneInfo> inertBones;
 	};
 
 	// Load xmlPath from disk once and collect both redundancy flavours from the parsed
@@ -190,7 +190,7 @@ namespace hdt
 			return result;
 
 		result.redundantChildren = CollectTemplateRedundantChildrenInfo(doc, &bytes);
-		result.redundantBones = CollectRedundantBoneDeclarations(doc, &bytes);
+		result.inertBones = CollectInertBoneDeclarations(doc, &bytes);
 		return result;
 	}
 
@@ -304,20 +304,22 @@ namespace hdt
 			emitTemplateRedundantWarning(info);
 		}
 
-		// Whole <bone> declarations that only restate the auto-created default bone:
-		// the engine would fabricate an identical body on demand, so the declaration
-		// is removable. See CollectRedundantBoneDeclarations for the comparison.
-		for (const auto& bone : redundancyInfo.redundantBones) {
+		// Top-level <bone> declarations the engine skips because an earlier element in this
+		// file already claims the name — the first use creates the bone ("Bone X already
+		// exists, skipped"), so these declarations are inert and provably removable.
+		for (const auto& bone : redundancyInfo.inertBones) {
 			const std::string named = bone.boneName.empty() ? std::string() : " \"" + bone.boneName + "\"";
 			std::string msg = xmlPath + ":" + std::to_string(bone.line) + ": " + bone.location +
 			                  " - <bone>" + named +
-			                  " only restates the default bone settings; the engine creates an"
-			                  " identical bone on demand, so this declaration is unnecessary and can be removed.";
+			                  " is never used: an earlier <bone> or bone reference in this file already"
+			                  " claims this name (the first use creates the bone), so the engine skips"
+			                  " this declaration. It can be removed.";
 			report.warnings.push_back(msg);
 			report.hasWarnings = true;
 			out << "    [WARNING] " << bone.location << " (line " << bone.line << "): <bone>" << named
-				<< " only restates the default bone settings; the engine creates an identical bone on"
-				   " demand, so this declaration can be removed.\n";
+				<< " is never used: an earlier <bone> or bone reference in this file already claims"
+				   " this name (the first use creates the bone), so the engine skips this declaration;"
+				   " it can be removed.\n";
 		}
 	}
 
@@ -564,9 +566,9 @@ namespace hdt
 		std::vector<std::string>& out)
 	{
 		// Single pass: enumerate all entries, collect NIFs and recurse into dirs.
-		// Previously used two passes (*.nif + FindExSearchLimitToDirectories) but
-		// FindExSearchLimitToDirectories is advisory and ignored by NTFS — Pass 2
-		// enumerated all files anyway, doubling the I/O cost on animation mods.
+		// A two-pass split (*.nif, then FindExSearchLimitToDirectories) would not be
+		// cheaper: the directories-only filter is advisory and ignored by NTFS, so each
+		// pass enumerates every file anyway, doubling the I/O cost on animation mods.
 		// One pass with FIND_FIRST_EX_LARGE_FETCH is faster overall.
 		const std::wstring dirW = dir.wstring();
 		WIN32_FIND_DATAW fd;
@@ -599,11 +601,14 @@ namespace hdt
 
 	/// Cross-references an equipped item's physics XML node references against the live
 	/// actor skeleton and appends one violation line per node the skeleton does not
-	/// provide. Each line names the affected element role and the runtime consequence so
-	/// an author can see why their physics detaches. Emits nothing when the skeleton root
-	/// is null (the caller already reported that) or the XML is missing/malformed (the
-	/// schema-validation pass over these same equipped XMLs is what reports XML validity).
-	static void appendMissingBoneRefViolations(RE::NiNode* skeletonRoot, const std::string& xmlPath,
+	/// provide. `meshRoot` is the equipped item's 3D: a <bone> naming a node absent from the
+	/// skeleton but skinned by that mesh is not reported (the engine creates a body for it
+	/// from the mesh skin, no name lookup). Each line names the affected element role and the
+	/// runtime consequence so an author can see why their physics detaches. Emits nothing when
+	/// the skeleton root is null (the caller already reported that) or the XML is
+	/// missing/malformed (the schema-validation pass over these same equipped XMLs reports it).
+	static void appendMissingBoneRefViolations(RE::NiNode* skeletonRoot, RE::NiAVObject* meshRoot,
+		const std::string& xmlPath,
 		const std::unordered_map<RE::BSFixedString, RE::BSFixedString>& renameMap,
 		const std::string& skeletonName, std::vector<std::string>& out)
 	{
@@ -615,7 +620,7 @@ namespace hdt
 		for (const auto& kv : renameMap)
 			rename.emplace(kv.first.c_str(), kv.second.c_str());
 
-		for (const auto& m : FindMissingPhysicsXmlBoneRefs(skeletonRoot, xmlPath, rename)) {
+		for (const auto& m : FindMissingPhysicsXmlBoneRefs(skeletonRoot, meshRoot, xmlPath, rename)) {
 			std::string effect;
 			if (m.usedAsBone && m.constraintRefs > 0)
 				effect = "its <bone> body is skipped and " + std::to_string(m.constraintRefs) +
@@ -692,7 +697,7 @@ namespace hdt
 							if (!nifDiskPath.empty())
 								outNifScanViolations->push_back(nifDiskPath + ": equipped armor node is not a NiNode (physics XML: " + asset.xmlPath + ")");
 						}
-						appendMissingBoneRefViolations(skeleton.npc.get(), xmlPath, armor.renameMap, skeleton.name(), *outNifScanViolations);
+						appendMissingBoneRefViolations(skeleton.npc.get(), armor.armorWorn.get(), xmlPath, armor.renameMap, skeleton.name(), *outNifScanViolations);
 					}
 					result.push_back(std::move(asset));
 				}
@@ -727,7 +732,7 @@ namespace hdt
 							if (!nifDiskPath.empty())
 								outNifScanViolations->push_back(nifDiskPath + ": equipped headpart node is not a NiNode (physics XML: " + asset.xmlPath + ")");
 						}
-						appendMissingBoneRefViolations(skeleton.npc.get(), xmlPath, skeleton.head.renameMap, skeleton.name(), *outNifScanViolations);
+						appendMissingBoneRefViolations(skeleton.npc.get(), headPart.headPart.get(), xmlPath, skeleton.head.renameMap, skeleton.name(), *outNifScanViolations);
 					}
 					result.push_back(std::move(asset));
 				}
