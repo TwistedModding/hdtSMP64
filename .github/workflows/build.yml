@@ -172,7 +172,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_MANIFEST_MODE=ON `
             -DCompiledPluginsPath="${{ github.workspace }}/out/build/${{ matrix.preset }}/plugins" `
-            -DPROJECT_BUILD_INFO="${{ needs.prepare.outputs.build_info }}"
+            -DPROJECT_BUILD_INFO="${{ needs.prepare.outputs.build_info }}" `
+            -DBUILD_VALIDATOR_TESTS=ON
 
       - name: Create the CompiledPluginsPath folder structure
         run: mkdir -p "${{ github.workspace }}/out/build/${{ matrix.preset }}/plugins/SKSE/Plugins/"
@@ -180,6 +181,9 @@ jobs:
 
       - name: Build according to the preset
         run: cmake --build out/build/${{ matrix.preset }} --config Release
+
+      - name: Run unit tests
+        run: ctest --test-dir out/build/${{ matrix.preset }} -C Release --output-on-failure
 
       - name: Verify build info embedded in DLL
         if: needs.prepare.outputs.build_info != ''
