@@ -3,6 +3,7 @@
 #include "../Config/hdtValidatorPaths.h"
 #include "../Parser/hdtSCHSchemaParser.h"
 #include "../Schema/hdtSCHSchemaModel.h"
+#include "../Utils/hdtPhysicsXmlSource.h"
 #include "../Utils/hdtStringUtils.h"
 #include "../Utils/hdtXMLUtils.h"
 #include "NetImmerseUtils.h"
@@ -69,7 +70,8 @@ namespace hdt
 	// ── Public API ────────────────────────────────────────────────────────────
 
 	// Sets result.hasErrors / result.hasWarnings according to each matched rule role.
-	SCHValidationResult ValidatePhysicsXMLWithSchematron(const std::string& xmlPath)
+	// `precomputed` lets the caller share one read+expand across validators; null reads and expands here.
+	SCHValidationResult ValidatePhysicsXMLWithSchematron(const std::string& xmlPath, const PhysicsXmlSource* precomputed)
 	{
 		SCHValidationResult result;
 
@@ -77,11 +79,14 @@ namespace hdt
 		if (!schema.loaded)
 			return result;
 
-		// Physics XML configs are always loose files on disk, never BSA-packed.
-		std::string bytes = readAllFile2(xmlPath.c_str());
-		if (bytes.empty())
-			return result;  // File-not-found is reported by the XSD validator
+		// Validate the same fully-expanded document the runtime builds. A malformed pattern is reported
+		// by the XSD validator, so bail quietly here (as we already do for a missing file).
+		PhysicsXmlSource localSrc;
+		const PhysicsXmlSource& src = resolvePhysicsXmlSource(xmlPath, precomputed, localSrc);
+		if (src.xml.empty() || !src.ok)
+			return result;
 
+		const std::string& bytes = src.xml;
 		pugi::xml_document doc;
 		auto parseResult = doc.load_buffer(bytes.data(), bytes.size());
 		if (!parseResult) {
@@ -109,8 +114,19 @@ namespace hdt
 				SCHViolation v;
 				v.xmlPath = xmlPath;
 				v.location = BuildNodeLocationPath(xnode.node());
-				v.line = OffsetToLineNumber(bytes, xnode.node().offset_debug());
 				v.message = resolveMessageTemplate(rule.message, xnode.node());
+
+				// The source map gives the author-meaningful line: a hand-written element's original line
+				// (expansion shifts raw line numbers when patterns are present) or, for generated content,
+				// the <pattern> use line. Only when the file used no patterns is there no map, so the
+				// offset maps straight to a line.
+				if (const PatternRange* pr = src.sourceMap.find(static_cast<std::size_t>(xnode.node().offset_debug()))) {
+					v.line = pr->useLine;
+					v.message += patternOriginNote(*pr);
+				} else {
+					v.line = OffsetToLineNumber(bytes, xnode.node().offset_debug());
+				}
+
 				v.role = rule.role;
 
 				if (rule.role == SCHRole::Error)

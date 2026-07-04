@@ -8,6 +8,8 @@
 
 namespace hdt
 {
+	struct PhysicsXmlSource;  // fwd: a shared read+expand result the caller may pass to reuse across validators
+
 	struct XSDViolation
 	{
 		std::string xmlPath;
@@ -26,7 +28,9 @@ namespace hdt
 
 	// Validate an FSMP physics XML file against the hdtSMP64 XSD constraints.
 	// Checks required attributes, valid enum values, and cross-references within the XML.
-	XSDValidationResult ValidatePhysicsXMLWithXSD(const std::string& xmlPath);
+	// Pass `precomputed` to reuse a shared read+expand across validators; null reads and expands here.
+	XSDValidationResult ValidatePhysicsXMLWithXSD(
+		const std::string& xmlPath, const PhysicsXmlSource* precomputed = nullptr);
 
 	// Access to the parsed XSD schema, for use by hdtXMLImprover.
 	// Thread-safe: schema is loaded once on first access via std::call_once.
