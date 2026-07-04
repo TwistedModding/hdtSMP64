@@ -38,6 +38,10 @@ option(BUILD_VALIDATOR_TESTS "Build the validator/XML-reader doctest suite" OFF)
 # in our vcpkg manifest).
 set(BUILD_TESTS OFF)
 
+# Standalone doctest suite for the SMP XML pattern expander (PLAN smp-xml-patterns, D5). OFF by default so
+# normal/packaged builds stay DLL-only; CI and local dev turn it ON to build + run the suite.
+option(BUILD_PATTERN_TESTS "Build the SMP XML pattern expander doctest suite" OFF)
+
 # default definitions
 add_definitions(-DBT_USE_SSE_IN_API)
 
@@ -48,6 +52,10 @@ add_subdirectory(src)
 if(BUILD_VALIDATOR_TESTS)
 	enable_testing()
 	add_subdirectory(tests/validator)
+endif()
+
+if(BUILD_PATTERN_TESTS)
+	add_subdirectory(tests/patterns) # tests/patterns/CMakeLists.txt owns enable_testing()
 endif()
 
 include(cmake/packaging.cmake)
