@@ -14,8 +14,11 @@ add_executable(
 	xml_pattern_tests
 	"${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/test_expander.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/test_library.cpp"
 	"${SOURCE_DIR}/Patterns/hdtXmlPatternExpander.cpp"
-	"${SOURCE_DIR}/Patterns/hdtXmlPatternExpander.h")
+	"${SOURCE_DIR}/Patterns/hdtXmlPatternExpander.h"
+	"${SOURCE_DIR}/Patterns/hdtPatternLibrary.cpp"
+	"${SOURCE_DIR}/Patterns/hdtPatternLibrary.h")
 
 target_compile_features(xml_pattern_tests PRIVATE cxx_std_20)
 target_include_directories(xml_pattern_tests PRIVATE "${SOURCE_DIR}")
