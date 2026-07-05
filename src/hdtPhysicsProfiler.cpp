@@ -437,9 +437,10 @@ namespace hdt::physicsprofiler
 			const auto activeScopes = g_activeScopes.load(std::memory_order_acquire);
 
 			if (activeScopes != 0) {  // Just debug in case we fucked up somewhere
-				logger::warn("Physics profile dump skipped because {} profile scopes are still active", activeScopes);
-				hdt::menuConsoleAppendLines(
-					fmt::format("Physics profile dump skipped because {} profile scopes are still active", activeScopes));
+				const auto msg =
+					fmt::format("Physics profile dump skipped because {} profile scopes are still active", activeScopes);
+				logger::warn("{}", msg);
+				hdt::menuConsoleAppendLines(msg);
 				return false;
 			}
 
