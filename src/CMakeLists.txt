@@ -208,9 +208,23 @@ endif()
 # variant at configure time --- like the bullet3 port's string(REPLACE) mods --- writing the patched copy into the build
 # tree so the vendored file itself is never modified. FSMPMenu.cpp includes it.
 set(SMF_PATCHED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/SKSEMenuFramework")
-file(READ "${ROOT_DIR}/extern/SKSEMenuFramework/include/SKSEMenuFramework.h" SMF_HEADER)
+set(SMF_HEADER_SRC "${ROOT_DIR}/extern/SKSEMenuFramework/include/SKSEMenuFramework.h")
+# Re-run configure (regenerating the patched copy) whenever the vendored header changes, so a header update
+# isn't silently ignored until someone manually reconfigures.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SMF_HEADER_SRC}")
+file(READ "${SMF_HEADER_SRC}" SMF_HEADER)
 string(REPLACE "GetModuleHandle(L\"SKSEMenuFramework\")" "GetModuleHandleW(L\"SKSEMenuFramework\")" SMF_HEADER
 			   "${SMF_HEADER}")
+# Fail loudly if a future vendored-header update drops the string we patch, instead of silently shipping the
+# unpatched wide-literal GetModuleHandle (which resolves to GetModuleHandleA in this non-UNICODE build and
+# would make the framework's module lookup fail at runtime). Guards against silent drift.
+string(FIND "${SMF_HEADER}" "GetModuleHandleW(L\"SKSEMenuFramework\")" SMF_PATCH_APPLIED)
+if(SMF_PATCH_APPLIED EQUAL -1)
+	message(
+		FATAL_ERROR
+		"SKSEMenuFramework.h: the GetModuleHandle(L\"SKSEMenuFramework\") string this build patches was not found "
+		"(the vendored header changed). Update the string(REPLACE) patch in src/CMakeLists.txt.")
+endif()
 file(WRITE "${SMF_PATCHED_DIR}/SKSEMenuFramework.h" "${SMF_HEADER}")
 
 target_include_directories(
