@@ -507,8 +507,14 @@ bool hdt::RunSMPDebugCommand(const char* buffer, const char* buffer2, const char
 				// scanned backwards so the huge file is never split line-by-line from the start. The summary
 				// and file path are echoed after it, so they stay visible at the bottom.
 				if (!reportPath.empty()) {
-					std::ifstream in(reportPath, std::ios::binary);
+					std::ifstream in(reportPath, std::ios::binary | std::ios::ate);
 					if (in) {
+						// A full report can be tens of MB, so read only a bounded tail from the end instead of
+						// the whole file, then keep at most the last kMaxReportLines of that tail.
+						constexpr std::streamoff kMaxTailBytes = 2 << 20;  // 2 MiB
+						const std::streamoff fileSize = in.tellg();
+						const bool byteTruncated = fileSize > kMaxTailBytes;
+						in.seekg(byteTruncated ? fileSize - kMaxTailBytes : 0, std::ios::beg);
 						std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 						constexpr size_t kMaxReportLines = 5000;
 						size_t lines = 0, pos = bytes.size();
@@ -518,6 +524,12 @@ bool hdt::RunSMPDebugCommand(const char* buffer, const char* buffer2, const char
 						if (pos > 0) {
 							hdt::menuConsoleAppendLines("(report truncated here; its beginning is in the file)");
 							pos += 1;  // skip the newline the scan stopped on
+						} else if (byteTruncated) {
+							// Fewer than kMaxReportLines in the tail but the file was byte-truncated: drop the
+							// partial leading line so the panel starts on a clean line boundary.
+							hdt::menuConsoleAppendLines("(report truncated here; its beginning is in the file)");
+							const auto nl = bytes.find('\n');
+							pos = (nl == std::string::npos) ? bytes.size() : nl + 1;
 						}
 						hdt::menuConsoleAppendLines(std::string_view(bytes).substr(pos));
 					}
