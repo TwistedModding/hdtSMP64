@@ -288,6 +288,10 @@ jobs:
           cp configs/configs.json "final_package/SKSE/Plugins/hdtSkinnedMeshConfigs/"
           cp -r configs/configsPresets "final_package/SKSE/Plugins/hdtSkinnedMeshConfigs/"
           cp -r configs/localization "final_package/SKSE/Plugins/hdtSkinnedMeshConfigs/"
+          # The config menu's monospace font goes into the SKSE Menu Framework's font folder (Data/SKSE/Plugins/Fonts),
+          # which the framework scans; the menu selects it by name via SKSEMenuFramework::PushFont.
+          mkdir -p "final_package/SKSE/Plugins/Fonts"
+          cp configs/fonts/FSMPMono.ttf configs/fonts/FSMPMono.LICENSE.txt "final_package/SKSE/Plugins/Fonts/"
 
           # 6. Create the unique ZIP
           cd final_package
