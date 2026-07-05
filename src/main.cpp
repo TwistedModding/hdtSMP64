@@ -451,7 +451,9 @@ bool hdt::RunSMPDebugCommand(const char* buffer, const char* buffer2, const char
 	}
 
 	if (_strnicmp(buffer, "QueryOverride", MAX_PATH) == 0) {
-		hdt::smpEcho(hdt::Override::OverrideManager::GetSingleton()->queryOverrideData().c_str());
+		// %s guard: queryOverrideData() is data, not a format string --- a stray '%' in it would otherwise
+		// make smpEcho's vsnprintf read garbage varargs (crash / corrupt output).
+		hdt::smpEcho("%s", hdt::Override::OverrideManager::GetSingleton()->queryOverrideData().c_str());
 		return true;
 	}
 
