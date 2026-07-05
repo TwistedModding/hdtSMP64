@@ -1,5 +1,6 @@
 #include "hdtNIFBoneRefValidator.h"
 
+#include "../Utils/hdtPhysicsXmlSource.h"  // readAndExpandPhysicsXml
 #include "../Utils/hdtStringUtils.h"       // ToLowerAscii
 #include "../Utils/hdtTemplateDefaults.h"  // isDefaultNodeName
 #include "../Utils/hdtValidatorFamily.h"   // familyForNode
@@ -148,13 +149,17 @@ namespace hdt
 		RE::NiNode* skeletonRoot,
 		RE::NiAVObject* meshRoot,
 		const std::string& xmlPath,
-		const std::unordered_map<std::string, std::string>& renameMap)
+		const std::unordered_map<std::string, std::string>& renameMap,
+		const PhysicsXmlSource* precomputed)
 	{
 		// A missing/malformed XML yields no findings on purpose: reporting bad XML is the
 		// schema validator's job, and it runs over these same equipped XMLs in the report.
-		std::string bytes = readAllFile2(xmlPath.c_str());
+		PhysicsXmlSource localSrc;
+		const PhysicsXmlSource& src = resolvePhysicsXmlSource(xmlPath, precomputed, localSrc);
+		if (!src.ok)
+			return {};  // malformed patterns are reported by the XSD validator
 		pugi::xml_document doc;
-		if (!doc.load_buffer(bytes.data(), bytes.size()))
+		if (!doc.load_buffer(src.xml.data(), src.xml.size()))
 			return {};
 
 		// Bones the equipped mesh is skinned to count as present even when absent from the
