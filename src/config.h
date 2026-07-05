@@ -43,9 +43,11 @@ namespace hdt
 	// later FSMP version drops leaves no stale entry behind; writes atomically (temp file + rename).
 	void saveUserSettings();
 
-	// The on-disk paths (relative to the game directory) of the two config files, exposed so other modules
-	// (e.g. the bug-report bundler) can bundle them without duplicating the string. configFilePath() is the
-	// shipped configs.json; userConfigFilePath() is the user's userConfigs.json (absent until they change one).
+	// The on-disk config location (relative to the game directory), exposed so other modules can build paths
+	// without duplicating the base string. configDir() is the hdtSkinnedMeshConfigs folder; configFilePath()
+	// is the shipped configs.json; userConfigFilePath() is the user's userConfigs.json (absent until they
+	// change a setting). The menu derives its presets folder and logo path from configDir().
+	std::string configDir();
 	std::string configFilePath();
 	std::string userConfigFilePath();
 

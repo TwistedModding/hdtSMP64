@@ -22,8 +22,7 @@ namespace hdt
 		// configs.json ships with FSMP and holds the defaults; an FSMP update may replace it. userConfigs.json
 		// is written by the menu and never shipped, so the user's settings survive updates. It is layered on
 		// top of configs.json at load, so a setting the user never touched keeps the shipped default.
-		constexpr auto CONFIG_PATH = "data/skse/plugins/hdtSkinnedMeshConfigs/configs.json";
-		constexpr auto USER_CONFIG_PATH = "data/skse/plugins/hdtSkinnedMeshConfigs/userConfigs.json";
+		constexpr auto CONFIG_DIR = "data/skse/plugins/hdtSkinnedMeshConfigs";
 
 		std::string readFileBytes(const std::string& path)
 		{
@@ -39,8 +38,9 @@ namespace hdt
 		}
 	}
 
-	std::string configFilePath() { return CONFIG_PATH; }
-	std::string userConfigFilePath() { return USER_CONFIG_PATH; }
+	std::string configDir() { return CONFIG_DIR; }
+	std::string configFilePath() { return std::string(CONFIG_DIR) + "/configs.json"; }
+	std::string userConfigFilePath() { return std::string(CONFIG_DIR) + "/userConfigs.json"; }
 
 	// Copy a parsed/clamped GlobalConfig into the live physics singletons + globals. This is the single
 	// place that knows how each field maps onto the engine (e.g. the inverted log level, and min-fps also
@@ -91,8 +91,8 @@ namespace hdt
 	void loadConfig()
 	{
 		// Defaults from the shipped configs.json, then the user's userConfigs.json layered on top.
-		GlobalConfig cfg = parseConfigJson(readFileBytes(CONFIG_PATH));
-		cfg = parseConfigJson(readFileBytes(USER_CONFIG_PATH), cfg);
+		GlobalConfig cfg = parseConfigJson(readFileBytes(configFilePath()));
+		cfg = parseConfigJson(readFileBytes(userConfigFilePath()), cfg);
 		applyConfig(cfg);
 	}
 
@@ -142,7 +142,7 @@ namespace hdt
 	{
 		// Parse configs.json alone (no userConfigs.json overlay): these are the "reset to default" targets.
 		// Cached in a function-local static so the file is read once, lazily, on first use by the menu.
-		static const GlobalConfig defs = parseConfigJson(readFileBytes(CONFIG_PATH));
+		static const GlobalConfig defs = parseConfigJson(readFileBytes(configFilePath()));
 		return defs;
 	}
 
@@ -156,7 +156,7 @@ namespace hdt
 		// Atomic write: emit to a sibling temp file, then rename over the target so a crash mid-write can
 		// never leave a truncated userConfigs.json that would fail to parse on next launch.
 		std::error_code ec;
-		const std::filesystem::path target(USER_CONFIG_PATH);
+		const std::filesystem::path target(userConfigFilePath());
 		const std::filesystem::path tmp = std::filesystem::path(target).concat(".tmp");
 		{
 			std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
@@ -172,6 +172,9 @@ namespace hdt
 			std::ofstream out(target, std::ios::binary | std::ios::trunc);
 			if (out)
 				out.write(merged.data(), static_cast<std::streamsize>(merged.size()));
+			else
+				logger::warn("saveUserSettings: could not write {} (rename and direct overwrite both failed)",
+					target.string());
 			std::filesystem::remove(tmp, ec);
 		}
 	}

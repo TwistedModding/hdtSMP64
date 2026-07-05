@@ -359,8 +359,10 @@ namespace
 		FontAwesome::Pop();
 		ImGuiMCP::SameLine();
 
-		std::vector<std::string> locales = hdt::loc::availableLocales();
-		std::sort(locales.begin(), locales.end());
+		// The installed locale set is fixed for the session (the files ship with FSMP), so scan the folder
+		// once and cache it instead of re-enumerating it every render frame. availableLocales() returns it
+		// already sorted.
+		static const std::vector<std::string> locales = hdt::loc::availableLocales();
 
 		const std::string& cur = hdt::g_locale;  // "" = auto
 		const std::string preview = cur.empty() ? std::string(tr("Auto (game language)")) : localeName(cur);
@@ -1120,7 +1122,7 @@ namespace
 		g_presets.clear();
 		namespace fs = std::filesystem;
 		std::error_code ec;
-		const fs::path dir = "data/skse/plugins/hdtSkinnedMeshConfigs/configsPresets";
+		const fs::path dir = fs::path(hdt::configDir()) / "configsPresets";
 		if (fs::exists(dir, ec)) {
 			for (const auto& entry : fs::directory_iterator(dir, ec)) {
 				if (entry.path().extension() == ".json") {
