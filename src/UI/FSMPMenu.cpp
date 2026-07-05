@@ -1172,10 +1172,11 @@ namespace
 	// The Home landing page (the one shown when clicking "FSMP" in the framework's menu): the brand front and
 	// centre --- a big logo, the name + version, the one-line description --- then the web links.
 	// ---- Bug-report bundle (Home page) ------------------------------------------------------------------
-	// A one-click "zip up what a bug report needs" helper: always the current hdtSMP64.log, optionally a fresh
-	// gear/errors-only validation report and the most recent crash log. The zip is written into the SKSE log
-	// folder and can be revealed (preselected) in Explorer. Building runs on a worker thread --- the report
-	// step calls the validator synchronously and can take seconds --- so the menu never blocks.
+	// A one-click "zip up what a bug report needs" helper: always the current hdtSMP64.log and the config
+	// (configs.json + userConfigs.json), optionally a fresh gear/errors-only validation report and the most
+	// recent crash log. The zip is written into the SKSE log folder and can be revealed (preselected) in
+	// Explorer. Building runs on a worker thread --- the report step calls the validator synchronously and
+	// can take seconds --- so the menu never blocks.
 
 	std::atomic<int> g_bundleState{ 0 };  // 0 idle, 1 building, 2 done, 3 failed
 	std::mutex g_bundleFileMx;
@@ -1318,9 +1319,9 @@ namespace
 		return ok;
 	}
 
-	// Build the bundle on a detached worker thread (one at a time). Collects the log, optionally a fresh
-	// gear/errors-only report (the same work as `smp report gear`, run synchronously here) and the
-	// newest crash log, then zips them into the log folder.
+	// Build the bundle on a detached worker thread (one at a time). Collects the log and the config files
+	// (configs.json + userConfigs.json), optionally a fresh gear/errors-only report (the same work as
+	// `smp report gear`, run synchronously here) and the newest crash log, then zips them into the log folder.
 	void buildBugReportAsync(bool includeReport, bool includeCrash)
 	{
 		int expected = g_bundleState.exchange(1);
@@ -1333,6 +1334,12 @@ namespace
 			if (auto log = spdlog::default_logger())
 				log->flush();  // make sure the on-disk log is current before we read it
 			entries.emplace_back(std::string(Plugin::NAME) + ".log", ld / (std::string(Plugin::NAME) + ".log"));
+
+			// The user's actual settings (userConfigs.json) and the shipped defaults (configs.json): a
+			// config-dependent bug can't be reproduced without them. writeZip skips either that is absent
+			// (userConfigs.json only exists once the user has changed a setting).
+			entries.emplace_back("configs.json", hdt::configFilePath());
+			entries.emplace_back("userConfigs.json", hdt::userConfigFilePath());
 
 			if (includeReport) {
 				std::string reportPath;

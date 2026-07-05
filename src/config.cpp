@@ -39,6 +39,9 @@ namespace hdt
 		}
 	}
 
+	std::string configFilePath() { return CONFIG_PATH; }
+	std::string userConfigFilePath() { return USER_CONFIG_PATH; }
+
 	// Copy a parsed/clamped GlobalConfig into the live physics singletons + globals. This is the single
 	// place that knows how each field maps onto the engine (e.g. the inverted log level, and min-fps also
 	// driving the fixed timestep). backupNodeByName is overwritten wholesale so a reload never duplicates.

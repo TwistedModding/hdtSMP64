@@ -43,6 +43,12 @@ namespace hdt
 	// later FSMP version drops leaves no stale entry behind; writes atomically (temp file + rename).
 	void saveUserSettings();
 
+	// The on-disk paths (relative to the game directory) of the two config files, exposed so other modules
+	// (e.g. the bug-report bundler) can bundle them without duplicating the string. configFilePath() is the
+	// shipped configs.json; userConfigFilePath() is the user's userConfigs.json (absent until they change one).
+	std::string configFilePath();
+	std::string userConfigFilePath();
+
 	// The canonical "apply settings" sequence shared by `smp reset` and the in-game menu: reload config,
 	// log it, clear tracked skeletons, and reset all physics systems.
 	void applyConfigReset();
