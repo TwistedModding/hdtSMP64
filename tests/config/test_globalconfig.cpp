@@ -58,7 +58,7 @@ TEST_CASE("out-of-range numbers are clamped, not rejected")
 {
 	const GlobalConfig c = parseConfigJson(R"({
 		"outputFontScale": 99.0, "overlayFontScale": 0.01,
-		"smp": { "logLevel": 99, "budgetMs": 999.0, "sampleSize": 0, "minScreenSizePercent": -5 },
+		"smp": { "logLevel": 99, "budgetMs": 999.0, "sampleSize": 0, "minScreenSizePercent": -5, "rotationSpeedLimit": 999.0, "unclampedResetAngle": -30.0, "minCullingDistance": 99999.0, "maximumActiveSkeletons": 9999 },
 		"solver": { "numIterations": 1, "erp": 5.0, "min-fps": 5000, "maxSubSteps": 0 },
 		"wind": { "windStrength": -10.0, "distanceForMaxWind": 99999.0 }
 	})");
@@ -73,6 +73,10 @@ TEST_CASE("out-of-range numbers are clamped, not rejected")
 	CHECK(c.maxSubSteps == 1);                                                 // [1,60]
 	CHECK(c.windStrength == doctest::Approx(0.0f));                            // [0,1000]
 	CHECK(c.distanceForMaxWind == doctest::Approx(10000.0f));                  // [0,10000]
+	CHECK(c.rotationSpeedLimit == doctest::Approx(100.0f));                    // [0,100]
+	CHECK(c.unclampedResetAngle == doctest::Approx(0.0f));                     // [0,360]
+	CHECK(c.minCullingDistance == doctest::Approx(10000.0f));                  // [0,10000]
+	CHECK(c.maximumActiveSkeletons == 200);                                    // [0,200]
 	CHECK(c.outputFontScale == doctest::Approx(GlobalConfig::maxFontScale));   // [0.6,2.0]
 	CHECK(c.overlayFontScale == doctest::Approx(GlobalConfig::minFontScale));  // [0.6,2.0]
 }
