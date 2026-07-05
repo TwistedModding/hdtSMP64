@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
+#include <utility>
 
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
@@ -74,10 +75,17 @@ namespace hdt
 
 	GlobalConfig parseConfigJson(std::string_view bytes, GlobalConfig base)
 	{
-		GlobalConfig c = base;
+		GlobalConfig c = std::move(base);
 
 		if (bytes.empty())
 			return c;  // nothing to parse; data() may be null -> avoid handing rapidjson a null pointer
+
+		// Tolerate a UTF-8 BOM a text editor may have prepended: rapidjson::Parse does not skip it and would
+		// otherwise fail the whole file. Both the shipped configs.json/userConfigs.json and the menu's preset
+		// files parse through here, so stripping it once here covers every JSON config path.
+		if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF &&
+			static_cast<unsigned char>(bytes[1]) == 0xBB && static_cast<unsigned char>(bytes[2]) == 0xBF)
+			bytes.remove_prefix(3);
 
 		rapidjson::Document doc;
 		doc.Parse(bytes.data(), bytes.size());
