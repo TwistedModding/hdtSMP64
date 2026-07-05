@@ -3,7 +3,7 @@
 #include "../Config/hdtValidatorPaths.h"
 #include "hdtStringUtils.h"
 #include "hdtValidatorFamily.h"
-#include "hdtXMLUtils.h"
+#include "hdtXMLUtils.h"  // sourceLineForOffset: translate expanded-doc offsets back to the author's source line
 
 #include <algorithm>
 #include <cctype>
@@ -598,7 +598,8 @@ namespace hdt
 		static AnalysisResult analyzeTemplateRedundantChildren(
 			const pugi::xml_document& doc,
 			const bool collectRemovals,
-			const std::string* sourceBytes)
+			const std::string* sourceBytes,
+			const PatternSourceMap* sourceMap)
 		{
 			AnalysisResult result;
 			auto sysNode = findSystemNode(doc);
@@ -665,7 +666,7 @@ namespace hdt
 							info.shadowedByLaterFrameTag = true;
 							info.shadowingTagName = lastFrameTagName;
 							if (sourceBytes)
-								info.line = OffsetToLineNumber(*sourceBytes, child.offset_debug());
+								info.line = sourceLineForOffset(sourceMap, sourceBytes, static_cast<std::size_t>(child.offset_debug()));
 
 							result.locations.insert(info.location);
 							result.infos.push_back(std::move(info));
@@ -698,7 +699,7 @@ namespace hdt
 						info.location = BuildNodeLocationPath(child);
 						info.tagName = childName;
 						if (sourceBytes)
-							info.line = OffsetToLineNumber(*sourceBytes, child.offset_debug());
+							info.line = sourceLineForOffset(sourceMap, sourceBytes, static_cast<std::size_t>(child.offset_debug()));
 
 						result.locations.insert(info.location);
 						result.infos.push_back(std::move(info));
@@ -909,6 +910,7 @@ namespace hdt
 		void collectInertBonesInOrder(pugi::xml_node parent,
 			std::unordered_set<std::string>& touched,
 			const std::string* sourceBytes,
+			const PatternSourceMap* sourceMap,
 			std::vector<InertBoneInfo>& out)
 		{
 			const auto touch = [&touched](const char* written) {
@@ -935,7 +937,7 @@ namespace hdt
 							info.location = BuildNodeLocationPath(node);
 							info.boneName = TrimAsciiWhitespace(name);
 							if (sourceBytes)
-								info.line = OffsetToLineNumber(*sourceBytes, node.offset_debug());
+								info.line = sourceLineForOffset(sourceMap, sourceBytes, static_cast<std::size_t>(node.offset_debug()));
 							out.push_back(std::move(info));
 						} else {
 							touched.insert(std::move(key));
@@ -960,7 +962,7 @@ namespace hdt
 					break;
 				default:
 					if (localName == "constraint-group")
-						collectInertBonesInOrder(node, touched, sourceBytes, out);
+						collectInertBonesInOrder(node, touched, sourceBytes, sourceMap, out);
 					break;
 				}
 			}
@@ -982,19 +984,20 @@ namespace hdt
 
 	std::unordered_set<std::string> CollectTemplateRedundantChildLocations(const pugi::xml_document& doc)
 	{
-		return analyzeTemplateRedundantChildren(doc, false, nullptr).locations;
+		return analyzeTemplateRedundantChildren(doc, false, nullptr, nullptr).locations;
 	}
 
 	std::vector<TemplateRedundantChildInfo> CollectTemplateRedundantChildrenInfo(
 		const pugi::xml_document& doc,
-		const std::string* sourceBytes)
+		const std::string* sourceBytes,
+		const PatternSourceMap* sourceMap)
 	{
-		return analyzeTemplateRedundantChildren(doc, false, sourceBytes).infos;
+		return analyzeTemplateRedundantChildren(doc, false, sourceBytes, sourceMap).infos;
 	}
 
 	bool RemoveTemplateRedundantChildren(pugi::xml_document& doc)
 	{
-		auto analysis = analyzeTemplateRedundantChildren(doc, true, nullptr);
+		auto analysis = analyzeTemplateRedundantChildren(doc, true, nullptr, nullptr);
 		if (analysis.removableNodes.empty())
 			return false;
 
@@ -1020,7 +1023,8 @@ namespace hdt
 
 	std::vector<InertBoneInfo> CollectInertBoneDeclarations(
 		const pugi::xml_document& doc,
-		const std::string* sourceBytes)
+		const std::string* sourceBytes,
+		const PatternSourceMap* sourceMap)
 	{
 		std::vector<InertBoneInfo> out;
 		auto sysNode = findSystemNode(doc);
@@ -1028,7 +1032,7 @@ namespace hdt
 			return out;
 
 		std::unordered_set<std::string> touched;
-		collectInertBonesInOrder(sysNode, touched, sourceBytes, out);
+		collectInertBonesInOrder(sysNode, touched, sourceBytes, sourceMap, out);
 		return out;
 	}
 

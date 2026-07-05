@@ -5,6 +5,8 @@
 
 namespace hdt
 {
+	struct PhysicsXmlSource;  // fwd: a shared read+expand result the caller may pass to reuse across validators
+
 	enum class SCHRole
 	{
 		Warning,
@@ -29,6 +31,8 @@ namespace hdt
 
 	// Validate an FSMP physics XML file against the Schematron rules in hdtSMP64.sch.
 	// Rules are loaded once from disk at first call and cached for subsequent calls.
-	SCHValidationResult ValidatePhysicsXMLWithSchematron(const std::string& xmlPath);
+	// Pass `precomputed` to reuse a shared read+expand across validators; null reads and expands here.
+	SCHValidationResult ValidatePhysicsXMLWithSchematron(
+		const std::string& xmlPath, const PhysicsXmlSource* precomputed = nullptr);
 
 }  // namespace hdt

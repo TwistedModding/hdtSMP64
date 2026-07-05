@@ -12,6 +12,8 @@ namespace RE
 
 namespace hdt
 {
+	struct PhysicsXmlSource;  // fwd: a shared read+expand result the caller may pass to reuse across validators
+
 	// A single physics-XML node reference that does not resolve to any node in the
 	// skeleton the XML is applied to. `usedAsBone`/`constraintRefs` record how the XML
 	// reaches the node so the report can state the concrete effect of its absence.
@@ -51,9 +53,11 @@ namespace hdt
 	// because their `name`/`bodyA`/`bodyB` carry template class names, not node references.
 	// Returns empty when the XML is missing or unparsable: reporting bad XML belongs to the
 	// schema validator, which runs over the same equipped XMLs. `renameMap` may be empty.
+	// Pass `precomputed` to reuse a shared read+expand across validators; null reads and expands here.
 	std::vector<MissingBoneRef> FindMissingPhysicsXmlBoneRefs(
 		RE::NiNode* skeletonRoot,
 		RE::NiAVObject* meshRoot,
 		const std::string& xmlPath,
-		const std::unordered_map<std::string, std::string>& renameMap);
+		const std::unordered_map<std::string, std::string>& renameMap,
+		const PhysicsXmlSource* precomputed = nullptr);
 }

@@ -2,6 +2,8 @@
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
 
 #include "HavokUtils.h"
+#include "Patterns/hdtPatternLibrary.h"
+#include "Patterns/hdtXmlPatternExpander.h"
 #include "XmlReader.h"
 #include "hdtSkyrimPhysicsWorld.h"
 
@@ -214,6 +216,28 @@ namespace hdt
 		m_skeleton = skeleton;
 		m_model = model;
 		m_filePath = path;
+
+		// Expand any <pattern> macros before parsing, so the loader sees only ordinary SMP elements.
+		// Shared definitions from the global patterns/ folder are visible alongside the file's own.
+		// Fail closed on a malformed pattern: no physics for this item (the asset validator reports why).
+		PatternOptions patternOpts;
+		patternOpts.libraries = &getGlobalPatternLibraries();
+		PatternExpansion expanded = expandPatterns(loaded, patternOpts);
+		if (!expanded.ok) {
+			// Fail-closed log is the only feedback a mod author gets, so include the diagnostic's line
+			// (many carry one; 0 means the failure has no single source line, e.g. a whole-file parse error).
+			if (expanded.diags.empty())
+				logger::error("[SMP] pattern expansion failed for '{}': unknown error", path.c_str());
+			else if (const PatternDiag& d = expanded.diags.front(); d.line > 0)
+				logger::error("[SMP] pattern expansion failed for '{}' (line {}): {}", path.c_str(), d.line,
+					d.message.c_str());
+			else
+				logger::error("[SMP] pattern expansion failed for '{}': {}", path.c_str(), d.message.c_str());
+			if (!old_system)
+				updateTransformUpDown(m_skeleton, true);
+			return nullptr;
+		}
+		loaded = std::move(expanded.xml);
 
 		XMLReader reader((uint8_t*)loaded.data(), loaded.size());
 		m_reader = &reader;

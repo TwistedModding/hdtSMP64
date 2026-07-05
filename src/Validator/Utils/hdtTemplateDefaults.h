@@ -9,6 +9,8 @@
 
 namespace hdt
 {
+	struct PatternSourceMap;  // fwd: maps expanded-doc offsets back to authoring source lines (pattern files)
+
 	// Returns true if the tag is a default node (bone-default, generic-constraint-default, etc.)
 	bool isDefaultNodeName(const std::string& localName);
 	struct TemplateRedundantChildInfo
@@ -21,10 +23,12 @@ namespace hdt
 	};
 
 	// Analyze one physics XML document and return detailed redundant child info.
-	// When sourceBytes is provided, line numbers are computed from node offsets.
+	// When sourceBytes is provided, line numbers are computed from node offsets; when sourceMap is also
+	// provided (a pattern-expanded document), each line is translated back to the author's source line.
 	std::vector<TemplateRedundantChildInfo> CollectTemplateRedundantChildrenInfo(
 		const pugi::xml_document& doc,
-		const std::string* sourceBytes = nullptr);
+		const std::string* sourceBytes = nullptr,
+		const PatternSourceMap* sourceMap = nullptr);
 
 	// Analyze one physics XML document using runtime-like template semantics and
 	// return locations of child tags that are redundant relative to effective defaults.
@@ -65,9 +69,11 @@ namespace hdt
 	// occurrences go through the same rename. Only certainty is reported: creators the
 	// engine resolves through data outside this file (mesh skinning) are ignored, so the
 	// walk under-reports rather than ever flagging a live declaration.
-	// When sourceBytes is provided, line numbers are computed from offsets.
+	// When sourceBytes is provided, line numbers are computed from offsets; when sourceMap is also provided
+	// (a pattern-expanded document), each line is translated back to the author's source line.
 	std::vector<InertBoneInfo> CollectInertBoneDeclarations(
 		const pugi::xml_document& doc,
-		const std::string* sourceBytes = nullptr);
+		const std::string* sourceBytes = nullptr,
+		const PatternSourceMap* sourceMap = nullptr);
 
 }  // namespace hdt

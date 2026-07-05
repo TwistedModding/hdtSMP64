@@ -3,7 +3,9 @@
 #include "../Config/hdtValidatorPaths.h"
 #include "../Parser/hdtXSDSchemaParser.h"
 #include "../Schema/hdtXSDSchemaModel.h"
+#include "../Utils/hdtPhysicsXmlSource.h"
 #include "../Utils/hdtStringUtils.h"
+#include "../Utils/hdtXMLUtils.h"  // patternOriginNote
 #include "NetImmerseUtils.h"
 #include "XmlReader.h"
 
@@ -289,9 +291,38 @@ namespace hdt
 
 	// ---- public API ----
 
+	// Rewrites each schema violation's line from the EXPANDED document to the author's source line via the
+	// pattern source map, matching hdtSCHValidator. It does nothing when the file used no patterns (empty
+	// map); line-0 (parse/structural) violations are left untouched. The reader reports 1-based rows into
+	// the expanded text; pugixml pretty-prints one element per line, so the first '<' at or after a row's
+	// start is that element's tag, whose byte offset the map keys on.
+	static void remapXsdViolationsToSource(std::vector<XSDViolation>& violations, const PhysicsXmlSource& src)
+	{
+		if (src.sourceMap.ranges.empty())
+			return;
+		std::vector<std::size_t> lineStart{ 0 };
+		for (std::size_t i = 0; i < src.xml.size(); ++i)
+			if (src.xml[i] == '\n')
+				lineStart.push_back(i + 1);
+		for (XSDViolation& v : violations) {
+			if (v.line <= 0 || static_cast<std::size_t>(v.line) > lineStart.size())
+				continue;
+			std::size_t off = lineStart[static_cast<std::size_t>(v.line) - 1];
+			const std::size_t lt = src.xml.find('<', off);
+			if (lt != std::string::npos)
+				off = lt;
+			if (const PatternRange* pr = src.sourceMap.find(off)) {
+				v.line = pr->useLine;
+				v.message += patternOriginNote(*pr);
+			}
+		}
+	}
+
 	/// Validates a physics XML file against the parsed hdtSMP64 XSD constraints.
 	/// Returns pass/fail status and a detailed list of violations with line/path context.
-	XSDValidationResult ValidatePhysicsXMLWithXSD(const std::string& xmlPath)
+	/// `precomputed` lets the caller share one read+expand across the validators (see parallelValidateXMLs);
+	/// when null the file is read and expanded here.
+	XSDValidationResult ValidatePhysicsXMLWithXSD(const std::string& xmlPath, const PhysicsXmlSource* precomputed)
 	{
 		XSDValidationResult result;
 
@@ -303,12 +334,22 @@ namespace hdt
 			return result;
 		}
 
-		// Physics XML configs are always loose files on disk, never BSA-packed.
-		auto bytes = readAllFile2(xmlPath.c_str());
+		// Validate the fully-expanded document. The XSD validator is the canonical reporter of
+		// structurally-broken physics XML, so it also surfaces pattern-expansion failures here.
+		PhysicsXmlSource localSrc;
+		const PhysicsXmlSource& src = resolvePhysicsXmlSource(xmlPath, precomputed, localSrc);
 
-		if (bytes.empty()) {
+		if (src.xml.empty()) {
 			result.isValid = false;
 			result.violations.push_back({ xmlPath, 0, 0, "", "File not found or empty" });
+			return result;
+		}
+		if (!src.ok) {
+			for (const auto& d : src.diags)
+				result.violations.push_back({ xmlPath, d.line, 0, "", "pattern expansion: " + d.message });
+			if (src.diags.empty())
+				result.violations.push_back({ xmlPath, 0, 0, "", "pattern expansion failed" });
+			result.isValid = false;
 			return result;
 		}
 
@@ -316,7 +357,7 @@ namespace hdt
 		ValidationContext ctx{ xmlPath, result.violations, {} };
 
 		try {
-			XMLReader reader((uint8_t*)bytes.data(), bytes.size());
+			XMLReader reader((uint8_t*)src.xml.data(), src.xml.size());
 			validateDocument(reader, ctx, schema);
 		} catch (const std::exception& e) {
 			result.violations.push_back({ xmlPath, 0, 0, "", std::string("XML parse error: ") + e.what() });
@@ -324,6 +365,7 @@ namespace hdt
 			result.violations.push_back({ xmlPath, 0, 0, "", "Unknown XML parse error" });
 		}
 
+		remapXsdViolationsToSource(result.violations, src);
 		result.isValid = result.violations.empty();
 		return result;
 	}
