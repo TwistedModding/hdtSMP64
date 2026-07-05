@@ -94,6 +94,9 @@ namespace hdt::loc
 		for (const auto& e : std::filesystem::directory_iterator(LOC_DIR, ec))
 			if (e.path().extension() == ".json")
 				out.push_back(toLower(e.path().stem().string()));
+		// Sort so both the dropdown order and bestMatch()'s regional-variant fallback are deterministic
+		// rather than dependent on the filesystem's iteration order.
+		std::sort(out.begin(), out.end());
 		return out;
 	}
 
