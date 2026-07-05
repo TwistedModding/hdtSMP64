@@ -42,7 +42,9 @@ namespace hdt
 		if (!actor)
 			return false;
 
-		auto* effects = actor->GetActiveEffectList();
+		// AsMagicTarget() locates the MagicTarget subobject at the game-version-dependent runtime offset;
+		// the compile-time upcast (actor->GetActiveEffectList()) points into the wrong bytes and crashes.
+		auto* effects = actor->AsMagicTarget()->GetActiveEffectList();
 		if (!effects)
 			return false;
 
