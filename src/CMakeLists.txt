@@ -347,9 +347,9 @@ install(
 	DIRECTORY "${ROOT_DIR}/configs/localization"
 	DESTINATION "SKSE/Plugins/hdtSkinnedMeshConfigs"
 	COMPONENT "main")
-# The config menu's monospace font for its Output / log panels. It installs into the SKSE Menu Framework's
-# own font folder (Data/SKSE/Plugins/Fonts) --- NOT hdtSkinnedMeshConfigs --- because the framework is what
-# scans that folder and bakes the face; the menu then selects it by name via SKSEMenuFramework::PushFont.
+# The config menu's monospace font for its Output / log panels. It installs into the SKSE Menu Framework's own font
+# folder (Data/SKSE/Plugins/Fonts) --- NOT hdtSkinnedMeshConfigs --- because the framework is what scans that folder and
+# bakes the face; the menu then selects it by name via SKSEMenuFramework::PushFont.
 install(
 	FILES "${ROOT_DIR}/configs/fonts/FSMPMono.ttf" "${ROOT_DIR}/configs/fonts/FSMPMono.LICENSE.txt"
 	DESTINATION "SKSE/Plugins/Fonts"
