@@ -118,6 +118,38 @@ A: Advanced_Vector_Extensions are extensions to the instruction sets for micropr
 				</group>
 			</optionalFileGroups>
 		</installStep>
+		<installStep name="Legacy MCM">
+			<optionalFileGroups order="Explicit">
+				<group name="Updating mid-playthrough from FSMP 3.x?" type="SelectExactlyOne">
+					<plugins order="Explicit">
+						<plugin name="No legacy MCM (recommended)">
+							<description>Choose this for a new installation or a new playthrough.
+
+The FSMP configuration menu is now provided through the SKSE Menu Framework; the old MCM esp is not installed.</description>
+							<conditionFlags>
+								<flag name="LEGACYMCM">Off</flag>
+							</conditionFlags>
+							<typeDescriptor>
+								<type name="Recommended" />
+							</typeDescriptor>
+						</plugin>
+						<plugin name="Keep the legacy MCM (updating mid-game from FSMP 3.x)">
+							<description>FSMP 4 replaced the old SkyUI MCM with the new SKSE Menu Framework menu, and "FSMPM - The FSMP MCM.esp" was removed from the installer. Skyrim destroys a save-game when an esp it references is removed.
+
+Choose this option if you are updating mid-playthrough from FSMP 3.x and want to continue your current save-game: it installs a stub of the old MCM, so your save keeps its esp. The stub's menu only shows a splash page pointing you to the new menu.
+
+Do not choose this for a fresh install or a new playthrough.</description>
+							<conditionFlags>
+								<flag name="LEGACYMCM">On</flag>
+							</conditionFlags>
+							<typeDescriptor>
+								<type name="Optional" />
+							</typeDescriptor>
+						</plugin>
+					</plugins>
+				</group>
+			</optionalFileGroups>
+		</installStep>
 		<installStep name="Thanks">
 			<optionalFileGroups order="Explicit">
 				<group name="" type="SelectAll">
@@ -176,6 +208,17 @@ Finally, credits and thanks to hydrogensaysHDT, aers, ousnius, Karonar1, alandts
 				</dependencies>
 				<files>
 					<folder source="raw-vs2022-windows-avx512\SKSE" destination="SKSE" priority="0" />
+				</files>
+			</pattern>
+			<pattern>
+				<dependencies>
+					<flagDependency flag="LEGACYMCM" value="On" />
+				</dependencies>
+				<files>
+					<folder source="FSMPM\Scripts" destination="Scripts" priority="1" />
+					<folder source="FSMPM\Source" destination="Source" priority="1" />
+					<folder source="FSMPM\interface" destination="interface" priority="1" />
+					<file source="FSMPM\FSMPM - The FSMP MCM.esp" destination="FSMPM - The FSMP MCM.esp" priority="1" />
 				</files>
 			</pattern>
 		</patterns>
