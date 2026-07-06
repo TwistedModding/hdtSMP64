@@ -8,6 +8,9 @@ on:
       # Publish any branch under ci/ (e.g. ci/skse-menu-framework) to build all AVX variants and a
       # prerelease, without editing this file. The "/" lives only in the branch name; the versioning
       # step below sanitizes it to "-" in the version string.
+      # Creating a ci/ branch from commits that already exist on another branch does NOT start a
+      # run: that push has an empty changed-file list, so the paths filter below matches nothing.
+      # Push one commit touching a listed path to start the build.
       - "ci/**"
     paths:
       - "**.cpp"
