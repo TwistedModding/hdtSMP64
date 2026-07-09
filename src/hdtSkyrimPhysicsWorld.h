@@ -1,0 +1,121 @@
+#pragma once
+
+#include "ActorManager.h"
+#include "Events.h"
+#include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"
+#include "hdtSkyrimSystem.h"
+
+namespace hdt
+{
+	constexpr float RESET_PHYSICS = -10.0f;
+
+	class SkyrimPhysicsWorld :
+		protected SkinnedMeshWorld,
+		public RE::BSTEventSink<Events::FrameEvent>,
+		public RE::BSTEventSink<Events::ShutdownEvent>,
+		public RE::BSTEventSink<SKSE::CameraEvent>,
+		public RE::BSTEventSink<Events::FrameSyncEvent>
+	{
+	public:
+		static SkyrimPhysicsWorld* get();
+
+		void doUpdate(float delta);
+		void doUpdate2ndStep(float delta, const float tick, const float remainingTimeStep);
+		void updateActiveState();
+		void setProfilerCapture(bool a_enabled, std::uint64_t a_sampleFrames = 240, std::uint64_t a_printFrames = 240);
+
+		void addSkinnedMeshSystem(SkinnedMeshSystem* system) override;
+		void removeSkinnedMeshSystem(SkinnedMeshSystem* system) override;
+		void removeSystemByNode(void* root);
+		using SkinnedMeshWorld::updateConstraintsForBone;
+
+		void resetSystems();
+
+		RE::BSEventNotifyControl ProcessEvent(const Events::FrameEvent* e, RE::BSTEventSource<Events::FrameEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const Events::FrameSyncEvent* e, RE::BSTEventSource<Events::FrameSyncEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const Events::ShutdownEvent* e, RE::BSTEventSource<Events::ShutdownEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const SKSE::CameraEvent* evn, RE::BSTEventSource<SKSE::CameraEvent>* dispatcher) override;
+
+		bool isSuspended() { return m_suspended; }
+
+		void suspend(bool loading = false)
+		{
+			m_suspended = true;
+			m_loading = loading;
+		}
+
+		void resume()
+		{
+			m_suspended = false;
+			if (m_loading) {
+				resetSystems();
+				m_loading = false;
+			}
+		}
+
+		// This is used for when you want to mutate some physics objects without causing problems
+		// Bullet is VERY sensitive to changes during simulation!
+		std::unique_lock<std::mutex> lockSimulation();
+
+		btVector3 applyTranslationOffset();
+		void restoreTranslationOffset(const btVector3&);
+
+		btContactSolverInfo& getSolverInfo() { return btDiscreteDynamicsWorld::getSolverInfo(); }
+
+		// @brief setWind force value for the world
+		// @param a_direction wind direction
+		// @a_scale Amount to scale the windForce. Defaults to scaleSkyrim
+		// @a_smoothingSamples How many samples to smooth. Defaults to 8. Must be greater than 0. Value of 1 means no smoothing
+		void setWind(const RE::NiPoint3& a_direction, float a_scale = scaleSkyrim, uint32_t a_smoothingSamples = 8);
+
+		tbb::task_group m_tasks;
+
+		bool m_pendingTransformUpdate = false;
+		bool m_useRealTime = false;
+		int min_fps = 60;
+		float m_budgetMs = 3.5f;
+		float m_timeTick = 1 / 60.f;
+		int m_maxSubSteps = 4;
+		bool m_clampRotations = true;
+		// @brief rotation speed limit of the PC in radians per second. Must be positive.
+		float m_rotationSpeedLimit = 10.f;
+		bool m_unclampedResets = true;
+		float m_unclampedResetAngle = 120.0f;
+		// @brief simulate the PC's systems in body-local space while in 1st person view (including
+		// Improved Camera's first person body): whole-body motion driven by the camera (instant turns,
+		// body-anchor corrections) is cancelled out of the simulation instead of injecting velocity.
+		bool m_firstPersonLocalSpace = true;
+		// @brief fraction of the whole-body rotation/translation cancelled while active, 0 (none) to 1 (all).
+		float m_firstPersonLocalSpaceAngular = 1.0f;
+		float m_firstPersonLocalSpaceLinear = 1.0f;
+		float m_2ndStepAverageProcessingTime = 0;
+		float m_averageSMPProcessingTimeInMainLoop = 0;
+		// Smoothed per-frame breakdown of the main-loop cost (ms), kept as members so the in-game menu's Perf
+		// tab / overlay can read the same numbers the "[SMP Metrics]" log line prints. Impact = Setup+Wait+Apply.
+		float m_avgSetupMs = 0.0f;
+		float m_avgWaitMs = 0.0f;
+		float m_avgWriteMs = 0.0f;
+		bool disabled = false;
+		uint8_t m_resetPc;
+		bool m_doMetrics = false;
+		int m_sampleSize = 5;  // how many samples (each sample taken every second) for determining average time per activeSkeleton.
+
+		//wind settings
+		bool m_enableWind = true;
+		float m_windStrength = 2.0f;           // compare to gravity acceleration of 9.8
+		float m_distanceForNoWind = 50.0f;     // how close to wind obstruction to fully block wind
+		float m_distanceForMaxWind = 3000.0f;  // how far to wind obstruction to not block wind
+
+	private:
+		SkyrimPhysicsWorld(void);
+		~SkyrimPhysicsWorld(void) noexcept;
+
+		std::mutex m_lock;
+
+		std::atomic_bool m_suspended;
+		std::atomic_bool m_loading;
+		float m_accumulatedInterval;
+		float m_averageInterval;
+		float m_SMPProcessingTimeInMainLoop = 0;
+	};
+}
