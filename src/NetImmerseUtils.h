@@ -73,6 +73,14 @@ namespace hdt
 		return ret ? ret->AsNode() : nullptr;
 	}
 
+	// Like findNode, but vets the found object through castNiNode's vtable guard before
+	// the virtual AsNode call, so a VR NiStream stub or junk pointer cannot fault the
+	// caller. Same result as findNode for every valid object.
+	static inline RE::NiNode* findNodeSafe(RE::NiNode* obj, const RE::BSFixedString& name)
+	{
+		return obj ? castNiNode(obj->GetObjectByName(name)) : nullptr;
+	}
+
 	static inline std::string readAllFile(const char* path)
 	{
 		RE::BSResourceNiBinaryStream stream(path);

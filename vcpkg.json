@@ -16,6 +16,10 @@
       ]
     },
     "xbyak",
-    "tbb"
+    "tbb",
+    "pugixml",
+    "rapidjson",
+    "doctest",
+    "miniz"
   ]
 }

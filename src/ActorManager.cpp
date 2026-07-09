@@ -33,6 +33,33 @@ namespace hdt
 		return false;
 	};
 
+	// Returns true when the actor currently has an active Invisibility magic effect --- i.e. the game is
+	// rendering it invisible. We test the effect archetype rather than the actor's alpha because alpha also
+	// dips during ordinary spawn/cell fade-in, which must NOT hide the hair. Inactive and dispelled effects
+	// are skipped so the result flips off the instant invisibility breaks (attacking, activating, etc.).
+	static bool actorHasActiveInvisibility(RE::Actor* actor)
+	{
+		if (!actor)
+			return false;
+
+		// AsMagicTarget() locates the MagicTarget subobject at the game-version-dependent runtime offset;
+		// the compile-time upcast (actor->GetActiveEffectList()) points into the wrong bytes and crashes.
+		auto* effects = actor->AsMagicTarget()->GetActiveEffectList();
+		if (!effects)
+			return false;
+
+		for (auto* ae : *effects) {
+			if (!ae || ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
+				continue;
+
+			const auto* base = ae->GetBaseObject();
+			if (base && base->GetArchetype() == RE::EffectArchetype::kInvisibility)
+				return true;
+		}
+
+		return false;
+	}
+
 	class HairVisitor  // public RE::InventoryChanges::IItemChangeVisitor
 	{
 	public:
@@ -132,6 +159,9 @@ namespace hdt
 
 			skeleton.attachArmor(e->armorModel, e->attachedNode);
 		} else {
+			// e->armorModel comes from the engine and can be null. In that case, it's useless.
+			if (!e->armorModel)
+				return RE::BSEventNotifyControl::kContinue;
 			skeleton.addArmor(e->armorModel);
 		}
 
@@ -216,7 +246,8 @@ namespace hdt
 		fixArmorNameMaps();
 
 		auto& skeleton = getSkeletonData(e->skeleton);
-		skeleton.npc = hdt::make_nismart(getNpcNode(e->skeleton));
+		// Non-lurker here (see above), so getNpcNode() would just re-find this same "NPC" node — reuse it.
+		skeleton.npc = hdt::make_nismart(npc);
 
 		skeleton.processGeometry(e->headNode, e->geometry);
 
@@ -363,6 +394,32 @@ namespace hdt
 		return RE::PlayerCamera::GetSingleton()->cameraRoot.get();
 	}
 
+	void ActorManager::Skeleton::updateHairInvisibility(bool featureEnabled)
+	{
+		// Target state: hide only when the feature is on AND the owning actor is invisible. The caller also
+		// invokes us once with featureEnabled=false the frame the toggle is switched off, where hide stays
+		// false and we un-cull any parts a previous invisibility had hidden.
+		bool hide = false;
+		if (featureEnabled) {
+			const auto actor = skyrim_cast<RE::Actor*>(skeletonOwner.get());
+			hide = actorHasActiveInvisibility(actor);
+		}
+
+		for (auto& headPart : head.headParts) {
+			// Only FSMP-driven physics hair gets re-skinned in a way that escapes the invisibility shader;
+			// static face parts are left to the game. Skip parts with no live geometry.
+			if (!headPart.m_hasDynamicPhysics || !headPart.headPart)
+				continue;
+
+			// Already in the desired state: don't rewrite the flag (and never touch a part we didn't hide).
+			if (hide == headPart.hiddenForInvisibility)
+				continue;
+
+			headPart.headPart->SetAppCulled(hide);
+			headPart.hiddenForInvisibility = hide;
+		}
+	}
+
 	// @brief This function is called by different events, with different locking needs, and is therefore extracted from the events.
 	void ActorManager::setSkeletonsActive(const bool updateMetrics)
 	{
@@ -391,6 +448,19 @@ namespace hdt
 		const auto cameraPosition = cameraTransform.translate;
 		const auto cameraOrientation = cameraTransform.rotate * RE::NiPoint3(0., 1., 0.);  // The camera matrix is relative to the world.
 		m_cameraPositionDuringFrame = cameraPosition;
+
+		// Precompute the screen-size threshold for this frame from the scene FOV (0 = feature disabled).
+		m_screenSizeThresholdScale = 0.f;
+		if (m_minScreenSizePercent > 0.f) {
+			if (auto* worldSceneGraph = RE::DrawWorld::GetSingleton().worldSceneGraph) {
+				const float cameraFOVDegrees = static_cast<RE::BSSceneGraph*>(worldSceneGraph)->GetRuntimeData().cameraFOV;
+				if (cameraFOVDegrees > 0.f && cameraFOVDegrees < 180.f) {
+					const float tanHalfFOV = std::tan(cameraFOVDegrees * std::numbers::pi_v<float> / 360.f);
+					const float fraction = m_minScreenSizePercent * 0.01f;  // percent -> fraction of screen height
+					m_screenSizeThresholdScale = fraction * fraction * tanHalfFOV * tanHalfFOV;
+				}
+			}
+		}
 
 		for (auto& skel : m_skeletons)
 			skel.calculateDistanceAndOrientationDifferenceFromSource(cameraPosition, cameraOrientation);
@@ -426,12 +496,33 @@ namespace hdt
 
 		activeSkeletons = 0;
 		const float minCullingDistance2 = m_minCullingDistance * m_minCullingDistance;
+
+		// Decide ONCE per frame whether to run the hair-invisibility pass, so a disabled feature costs
+		// nothing per skeleton beyond a predicted branch. We still run it for the single frame right after
+		// the toggle is switched off (m_hairInvisibilityEngaged was set last frame) to un-cull any hair we
+		// had hidden; from then on it stays off until re-enabled.
+		const bool doHairInvisibility = m_hideSMPHairWhenInvisible || m_hairInvisibilityEngaged;
+		m_hairInvisibilityEngaged = m_hideSMPHairWhenInvisible;
+
 		for (auto& i : m_skeletons) {
+			// Keep physics-hair visibility in sync with the actor's invisibility state. Runs for every
+			// skeleton (even budget-culled ones); the whole pass is skipped while the feature is off.
+			if (doHairInvisibility)
+				i.updateHairInvisibility(m_hideSMPHairWhenInvisible);
+
+			// When enabled, skip physics for dead non-player actors to save performance.
+			bool skipDeadActor = false;
+			if (m_skipDeadActors && !i.isPlayerCharacter()) {
+				const auto actor = skyrim_cast<RE::Actor*>(i.skeletonOwner.get());
+				if (actor && actor->IsDead())
+					skipDeadActor = true;
+			}
+
 			// Skeletons inside the minimum culling distance are kept active even when the budget cap
 			// is exceeded, so a shrinking auto-adjust cap can't strip physics from NPCs next to the camera.
 			const bool forceKeepNear = i.m_distanceFromCamera2 < minCullingDistance2;
 			const bool overBudget = activeSkeletons >= maxActiveSkeletons;
-			if (!i.hasPhysics || !i.updateAttachedState(playerCell, overBudget && !forceKeepNear))
+			if (!i.hasPhysics || !i.updateAttachedState(playerCell, (overBudget && !forceKeepNear) || skipDeadActor))
 				continue;
 
 			activeSkeletons++;
@@ -826,8 +917,7 @@ namespace hdt
 
 	void ActorManager::Skeleton::addArmor(RE::NiNode* armorModel)
 	{
-		if (armorModel)
-			logBrokenNifOnce(armorModel->name.c_str(), armorModel);
+		logBrokenNifOnce(armorModel->name.c_str(), armorModel);
 
 		IDType id = armors.size() ? armors.back().id + 1 : 0;
 		auto prefix = armorPrefix(id);
@@ -1045,6 +1135,21 @@ namespace hdt
 
 		if (!skeleton3D || (camera && !camera->NodeInFrustum(skeleton3D)))
 			return false;
+
+		// Skip non-player skeletons whose projected bounding sphere is below the screen-size threshold.
+		// screenFraction < minFraction <=> r / (distance * tan(fov/2)) < fr <=> r^2 < fr^2 * distance^2 * tan(fov/2)^2
+		if (manager->m_screenSizeThresholdScale > 0.f) {
+			const auto& bound = skeleton3D->worldBound;
+			const auto cameraToBound = bound.center - manager->m_cameraPositionDuringFrame;
+			const float distanceToBound2 = cameraToBound.x * cameraToBound.x + cameraToBound.y * cameraToBound.y + cameraToBound.z * cameraToBound.z;
+
+			if (distanceToBound2 > bound.radius * bound.radius) {
+				// Use the nearest point on the sphere for a conservative size estimate.
+				const float visibleDistance = std::sqrt(distanceToBound2) - bound.radius;
+				if (bound.radius * bound.radius < manager->m_screenSizeThresholdScale * visibleDistance * visibleDistance)
+					return false;
+			}
+		}
 
 		RE::NiPoint3 hitLocation;
 		auto* obstacle = Actor_CalculateLOS(owner, &manager->m_cameraPositionDuringFrame, &hitLocation, 6.28f);
@@ -1343,7 +1448,7 @@ namespace hdt
 									rootFadeNode->ProcessClone(c);
 									auto clonedRoot = static_cast<RE::BSFadeNode*>(clonedObj);
 
-									// VR stuff probably still needed?
+									// NOTE: This is likely not needed due to: https://github.com/alandtse/CommonLibVR/commit/2f535530072827b8e8961f853232bec6b219ecff
 									// VR: NiSkinInstance::LinkObject fails to resolve internal bone refs,
 									// storing the bone name as a raw char* instead of a resolved NiNode*.
 									// Bone NiNodes are self-contained in the face geometry NIF, so resolve
@@ -1362,7 +1467,7 @@ namespace hdt
 											if (!grd.skinInstance || !grd.skinInstance->skinData)
 												continue;
 											std::uint32_t vrResolved = 0, vrFailed = 0;
-											for (std::uint32_t bi = 0; bi < grd.skinInstance->skinData->bones; ++bi) {
+											for (std::uint32_t bi = 0; bi < grd.skinInstance->skinData->GetBoneCount(); ++bi) {
 												auto bone = grd.skinInstance->bones[bi];
 												if (!bone || isValidNiObject(bone))
 													continue;
@@ -1418,7 +1523,7 @@ namespace hdt
 		bool hasMerged = false;
 		bool hasRenames = false;
 
-		for (uint32_t boneIdx = 0; boneIdx < geometry->GetGeometryRuntimeData().skinInstance->skinData->bones; boneIdx++) {
+		for (uint32_t boneIdx = 0; boneIdx < geometry->GetGeometryRuntimeData().skinInstance->skinData->GetBoneCount(); boneIdx++) {
 			RE::BSFixedString boneName("");
 
 			// skin the way the game does via FMD
@@ -1432,7 +1537,7 @@ namespace hdt
 				const auto& rd = origGeom->GetGeometryRuntimeData();
 				if (rd.skinInstance && reinterpret_cast<uintptr_t>(rd.skinInstance.get()) <= kCanonicalUserSpaceMax) {
 					auto skinData = rd.skinInstance->skinData.get();
-					if (skinData && reinterpret_cast<uintptr_t>(skinData) <= kCanonicalUserSpaceMax && boneIdx < skinData->bones) {
+					if (skinData && reinterpret_cast<uintptr_t>(skinData) <= kCanonicalUserSpaceMax && boneIdx < skinData->GetBoneCount()) {
 						if (rd.skinInstance->bones && reinterpret_cast<uintptr_t>(rd.skinInstance->bones) <= kCanonicalUserSpaceMax) {
 							auto bone = rd.skinInstance->bones[boneIdx];
 							if (isValidNiObject(bone)) {
@@ -1452,7 +1557,7 @@ namespace hdt
 				const auto& activeSkin = geometry->GetGeometryRuntimeData().skinInstance;
 				if (activeSkin && reinterpret_cast<uintptr_t>(activeSkin.get()) <= kCanonicalUserSpaceMax) {
 					auto skinData = activeSkin->skinData.get();
-					if (skinData && reinterpret_cast<uintptr_t>(skinData) <= kCanonicalUserSpaceMax && boneIdx < skinData->bones) {
+					if (skinData && reinterpret_cast<uintptr_t>(skinData) <= kCanonicalUserSpaceMax && boneIdx < skinData->GetBoneCount()) {
 						if (activeSkin->bones && reinterpret_cast<uintptr_t>(activeSkin->bones) <= kCanonicalUserSpaceMax) {
 							auto bone = activeSkin->bones[boneIdx];
 							if (isValidNiObject(bone)) {

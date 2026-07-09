@@ -2,6 +2,8 @@
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
 
 #include "HavokUtils.h"
+#include "Patterns/hdtPatternLibrary.h"
+#include "Patterns/hdtXmlPatternExpander.h"
 #include "XmlReader.h"
 #include "hdtSkyrimPhysicsWorld.h"
 
@@ -183,7 +185,11 @@ namespace hdt
 		}
 
 		logger::warn("Bone {} used before being created, trying to create it with current default values", name.c_str());
-		return createBoneFromNodeName(name);
+		// Create from the renamed name too: the lookup above used it, and under a rename
+		// map (skeleton merge / DynamicHDT) the raw name's node typically no longer
+		// exists — creating from the raw name would drop the reference or split the
+		// bone into two identities. Constraint readers already create from renamed names.
+		return createBoneFromNodeName(getRenamedBone(name));
 	}
 
 	RE::BSFixedString SkyrimSystemCreator::getRenamedBone(const RE::BSFixedString& name)
@@ -211,6 +217,28 @@ namespace hdt
 		m_model = model;
 		m_filePath = path;
 
+		// Expand any <pattern> macros before parsing, so the loader sees only ordinary SMP elements.
+		// Shared definitions from the global patterns/ folder are visible alongside the file's own.
+		// Fail closed on a malformed pattern: no physics for this item (the asset validator reports why).
+		PatternOptions patternOpts;
+		patternOpts.libraries = &getGlobalPatternLibraries();
+		PatternExpansion expanded = expandPatterns(loaded, patternOpts);
+		if (!expanded.ok) {
+			// Fail-closed log is the only feedback a mod author gets, so include the diagnostic's line
+			// (many carry one; 0 means the failure has no single source line, e.g. a whole-file parse error).
+			if (expanded.diags.empty())
+				logger::error("[SMP] pattern expansion failed for '{}': unknown error", path.c_str());
+			else if (const PatternDiag& d = expanded.diags.front(); d.line > 0)
+				logger::error("[SMP] pattern expansion failed for '{}' (line {}): {}", path.c_str(), d.line,
+					d.message.c_str());
+			else
+				logger::error("[SMP] pattern expansion failed for '{}': {}", path.c_str(), d.message.c_str());
+			if (!old_system)
+				updateTransformUpDown(m_skeleton, true);
+			return nullptr;
+		}
+		loaded = std::move(expanded.xml);
+
 		XMLReader reader((uint8_t*)loaded.data(), loaded.size());
 		m_reader = &reader;
 
@@ -227,13 +255,6 @@ namespace hdt
 
 		m_mesh = RE::make_smart<SkyrimSystem>(skeleton);
 		m_boneIndex.clear();
-
-		// Store original locale
-		char saved_locale[32];
-		strcpy_s(saved_locale, std::setlocale(LC_NUMERIC, nullptr));
-
-		// Set locale to en_US
-		std::setlocale(LC_NUMERIC, "en_US");
 
 		// This forces the skeleton into a neutral reference pose, which avoids building invalid shape data
 		// We pull the references directly from havok for the exact same reference data the engine uses
@@ -360,9 +381,6 @@ namespace hdt
 		}
 
 		m_deferredBuilds.clear();
-
-		// Restore original locale
-		std::setlocale(LC_NUMERIC, saved_locale);
 
 		if (m_reader->GetErrorCode() != Xml::ErrorCode::None) {
 			logger::error("xml parse error - {}", m_reader->GetErrorMessage());
@@ -650,6 +668,7 @@ namespace hdt
 		RE::BSFixedString name = getRenamedBone(m_reader->getAttribute("name"));
 		if (findBoneFromIndex(name)) {
 			logger::warn("Bone {} already exists, skipped", name.c_str());
+			m_reader->skipCurrentElement();
 			return;
 		}
 
@@ -708,13 +727,13 @@ namespace hdt
 
 			RE::NiSkinInstance* skinInstance = triShape->GetGeometryRuntimeData().skinInstance.get();
 			RE::NiSkinData* skinData = skinInstance->skinData.get();
-			for (uint32_t boneIdx = 0; boneIdx < skinData->bones; ++boneIdx) {
+			for (uint32_t boneIdx = 0; boneIdx < skinData->GetBoneCount(); ++boneIdx) {
 				auto node = skinInstance->bones[boneIdx];
 				if (!node) {
 					continue;
 				}
-				auto boneData = &skinData->boneData[boneIdx];
-				auto boundingSphere = BoundingSphere(convertNi(boneData->bound.center), boneData->bound.radius);
+				const auto& boneBound = skinData->GetBoneDataBound(boneIdx);
+				auto boundingSphere = BoundingSphere(convertNi(boneBound.center), boneBound.radius);
 				const RE::BSFixedString& boneName = node->name;
 				auto bone = static_cast<SkinnedMeshBone*>(findBoneFromIndex(boneName));
 				if (!bone) {
@@ -726,7 +745,7 @@ namespace hdt
 					logger::info("Created bone {} added to body {}, created without default values", boneName.c_str(), name);
 				}
 
-				body->addBone(bone, convertNi(boneData->skinToBone), boundingSphere);
+				body->addBone(bone, convertNi(skinData->GetBoneDataSkinToBone(boneIdx)), boundingSphere);
 			}
 
 			RE::NiSkinPartition* skinPartition = triShape->GetGeometryRuntimeData().skinInstance->skinPartition.get();
@@ -765,7 +784,7 @@ namespace hdt
 			for (uint32_t j = 0; j < skinPartition->vertexCount; ++j) {
 				RE::NiPoint3* vertexPos;
 
-				if (dynamicShape)
+				if (dynamicShape && dynamicVData)
 					vertexPos = reinterpret_cast<RE::NiPoint3*>(&dynamicVData[j * 16]);
 				else
 					vertexPos = reinterpret_cast<RE::NiPoint3*>(&vertexBlock[j * vSize]);
