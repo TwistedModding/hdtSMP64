@@ -33,6 +33,9 @@ TEST_CASE("round-trip: serialize then parse is identity for a clamped config")
 	c.erp = 0.33f;
 	c.windEnabled = false;
 	c.distanceForMaxWind = 1234.0f;
+	c.firstPersonLocalSpaceSim = false;  // defaults to true, so flip it to exercise the round-trip
+	c.firstPersonLocalSpaceAngular = 0.6f;
+	c.firstPersonLocalSpaceLinear = 0.7f;
 	c.modsDir = "C:/Mods/staging";
 	c.backupNodeByName = { "Virtual Hands", "Virtual Body" };
 	c.outputFontScale = 1.4f;
@@ -58,7 +61,7 @@ TEST_CASE("out-of-range numbers are clamped, not rejected")
 {
 	const GlobalConfig c = parseConfigJson(R"({
 		"outputFontScale": 99.0, "overlayFontScale": 0.01,
-		"smp": { "logLevel": 99, "budgetMs": 999.0, "sampleSize": 0, "minScreenSizePercent": -5, "rotationSpeedLimit": 999.0, "unclampedResetAngle": -30.0, "minCullingDistance": 99999.0, "maximumActiveSkeletons": 9999 },
+		"smp": { "logLevel": 99, "budgetMs": 999.0, "sampleSize": 0, "minScreenSizePercent": -5, "rotationSpeedLimit": 999.0, "unclampedResetAngle": -30.0, "minCullingDistance": 99999.0, "maximumActiveSkeletons": 9999, "firstPersonLocalSpaceAngular": 5.0, "firstPersonLocalSpaceLinear": -1.0 },
 		"solver": { "numIterations": 1, "erp": 5.0, "min-fps": 5000, "maxSubSteps": 0 },
 		"wind": { "windStrength": -10.0, "distanceForMaxWind": 99999.0 }
 	})");
@@ -77,6 +80,8 @@ TEST_CASE("out-of-range numbers are clamped, not rejected")
 	CHECK(c.unclampedResetAngle == doctest::Approx(0.0f));                     // [0,360]
 	CHECK(c.minCullingDistance == doctest::Approx(10000.0f));                  // [0,10000]
 	CHECK(c.maximumActiveSkeletons == 200);                                    // [0,200]
+	CHECK(c.firstPersonLocalSpaceAngular == doctest::Approx(1.0f));            // [0,1]
+	CHECK(c.firstPersonLocalSpaceLinear == doctest::Approx(0.0f));             // [0,1]
 	CHECK(c.outputFontScale == doctest::Approx(GlobalConfig::maxFontScale));   // [0.6,2.0]
 	CHECK(c.overlayFontScale == doctest::Approx(GlobalConfig::minFontScale));  // [0.6,2.0]
 }
