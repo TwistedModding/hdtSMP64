@@ -36,6 +36,13 @@ namespace hdt
 		float budgetMs = 3.5f;
 		int sampleSize = 5;
 		bool disable1stPersonViewPhysics = false;
+		// Simulate the PC's systems in body-local space while in 1st person view (including Improved
+		// Camera's first person body): whole-body motion driven by the camera (instant turns, body-anchor
+		// corrections) is cancelled out of the simulation instead of injecting velocity. The factors are
+		// the cancelled fraction of the whole-body rotation/translation, 0 (none) to 1 (all).
+		bool firstPersonLocalSpaceSim = true;
+		float firstPersonLocalSpaceAngular = 1.0f;
+		float firstPersonLocalSpaceLinear = 1.0f;
 		bool skipDeadActors = false;
 		float minScreenSizePercent = 0.0f;
 		// backupNodeByName has no menu control; it is preserved purely so a round-trip never drops it.

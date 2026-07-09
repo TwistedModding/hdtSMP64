@@ -64,6 +64,9 @@ namespace hdt
 		a->m_minScreenSizePercent = c.minScreenSizePercent;
 
 		auto* w = SkyrimPhysicsWorld::get();
+		w->m_firstPersonLocalSpace = c.firstPersonLocalSpaceSim;
+		w->m_firstPersonLocalSpaceAngular = c.firstPersonLocalSpaceAngular;
+		w->m_firstPersonLocalSpaceLinear = c.firstPersonLocalSpaceLinear;
 		w->m_clampRotations = c.clampRotations;
 		w->m_rotationSpeedLimit = c.rotationSpeedLimit;
 		w->m_unclampedResets = c.unclampedResets;
@@ -114,6 +117,9 @@ namespace hdt
 		c.minScreenSizePercent = a->m_minScreenSizePercent;
 
 		auto* w = SkyrimPhysicsWorld::get();
+		c.firstPersonLocalSpaceSim = w->m_firstPersonLocalSpace;
+		c.firstPersonLocalSpaceAngular = w->m_firstPersonLocalSpaceAngular;
+		c.firstPersonLocalSpaceLinear = w->m_firstPersonLocalSpaceLinear;
 		c.clampRotations = w->m_clampRotations;
 		c.rotationSpeedLimit = w->m_rotationSpeedLimit;
 		c.unclampedResets = w->m_unclampedResets;
@@ -223,6 +229,9 @@ namespace hdt
 		LOG("smp.autoAdjustMaxSkeletons", a->m_autoAdjustMaxSkeletons);
 		LOG("smp.sampleSize", w->m_sampleSize);
 		LOG("smp.disable1stPersonViewPhysics", a->m_disable1stPersonViewPhysics);
+		LOG("smp.firstPersonLocalSpaceSim", w->m_firstPersonLocalSpace);
+		LOG("smp.firstPersonLocalSpaceAngular", w->m_firstPersonLocalSpaceAngular);
+		LOG("smp.firstPersonLocalSpaceLinear", w->m_firstPersonLocalSpaceLinear);
 		LOG("smp.skipDeadActors", a->m_skipDeadActors);
 		LOG("smp.minScreenSizePercent", a->m_minScreenSizePercent);
 #undef LOG

@@ -81,6 +81,13 @@ namespace hdt
 		float m_rotationSpeedLimit = 10.f;
 		bool m_unclampedResets = true;
 		float m_unclampedResetAngle = 120.0f;
+		// @brief simulate the PC's systems in body-local space while in 1st person view (including
+		// Improved Camera's first person body): whole-body motion driven by the camera (instant turns,
+		// body-anchor corrections) is cancelled out of the simulation instead of injecting velocity.
+		bool m_firstPersonLocalSpace = true;
+		// @brief fraction of the whole-body rotation/translation cancelled while active, 0 (none) to 1 (all).
+		float m_firstPersonLocalSpaceAngular = 1.0f;
+		float m_firstPersonLocalSpaceLinear = 1.0f;
 		float m_2ndStepAverageProcessingTime = 0;
 		float m_averageSMPProcessingTimeInMainLoop = 0;
 		// Smoothed per-frame breakdown of the main-loop cost (ms), kept as members so the in-game menu's Perf

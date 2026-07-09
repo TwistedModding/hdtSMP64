@@ -113,6 +113,9 @@ namespace hdt
 		c.budgetMs = clampv(read(smp, "budgetMs", c.budgetMs), 0.1f, 20.0f);
 		c.sampleSize = clampv(read(smp, "sampleSize", c.sampleSize), 1, 50);
 		c.disable1stPersonViewPhysics = read(smp, "disable1stPersonViewPhysics", c.disable1stPersonViewPhysics);
+		c.firstPersonLocalSpaceSim = read(smp, "firstPersonLocalSpaceSim", c.firstPersonLocalSpaceSim);
+		c.firstPersonLocalSpaceAngular = clampv(read(smp, "firstPersonLocalSpaceAngular", c.firstPersonLocalSpaceAngular), 0.0f, 1.0f);
+		c.firstPersonLocalSpaceLinear = clampv(read(smp, "firstPersonLocalSpaceLinear", c.firstPersonLocalSpaceLinear), 0.0f, 1.0f);
 		c.skipDeadActors = read(smp, "skipDeadActors", c.skipDeadActors);
 		c.minScreenSizePercent = clampv(read(smp, "minScreenSizePercent", c.minScreenSizePercent), 0.0f, 100.0f);
 		c.backupNodeByName = read(smp, "backupNodeByName", c.backupNodeByName);
@@ -190,6 +193,12 @@ namespace hdt
 		w.Int(c.sampleSize);
 		w.Key("disable1stPersonViewPhysics");
 		w.Bool(c.disable1stPersonViewPhysics);
+		w.Key("firstPersonLocalSpaceSim");
+		w.Bool(c.firstPersonLocalSpaceSim);
+		w.Key("firstPersonLocalSpaceAngular");
+		w.Double(c.firstPersonLocalSpaceAngular);
+		w.Key("firstPersonLocalSpaceLinear");
+		w.Double(c.firstPersonLocalSpaceLinear);
 		w.Key("skipDeadActors");
 		w.Bool(c.skipDeadActors);
 		w.Key("minScreenSizePercent");

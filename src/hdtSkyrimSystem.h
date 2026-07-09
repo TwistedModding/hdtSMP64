@@ -41,6 +41,14 @@ namespace hdt
 
 		// angular velocity damper
 		btQuaternion m_lastRootRotation;
+
+		// 1st person body-local space simulation (see SkyrimPhysicsWorld::m_firstPersonLocalSpace)
+		float updateLocalSpace(float timeStep);
+
+		RE::NiPointer<RE::NiNode> m_localSpaceRef;
+		btQuaternion m_localSpaceRotation;
+		btVector3 m_localSpacePosition;
+		bool m_localSpaceActive = false;
 	};
 
 	class XMLReader;

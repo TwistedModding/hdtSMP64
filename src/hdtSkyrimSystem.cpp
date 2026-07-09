@@ -87,6 +87,99 @@ namespace hdt
 		m_oldRoot = m_skeleton;
 	}
 
+	static bool isFirstPersonView()
+	{
+		auto camera = RE::PlayerCamera::GetSingleton();
+		if (!camera || !camera->currentState) {
+			return false;
+		}
+
+		if (camera->currentState->id == RE::CameraState::kFirstPerson) {
+			return true;
+		}
+
+		// Improved Camera's fake first person: third person state with the zoom pinned to its sentinel offset.
+		static const bool improvedCamera = GetModuleHandleA("ImprovedCameraSE.dll") != nullptr;
+		if (improvedCamera && camera->currentState->id == RE::CameraState::kThirdPerson) {
+			auto state = static_cast<RE::ThirdPersonState*>(camera->currentState.get());
+			return std::abs(state->currentZoomOffset + 0.275f) < 1e-4f;
+		}
+
+		return false;
+	}
+
+	float SkyrimSystem::updateLocalSpace(float timeStep)
+	{
+		auto world = SkyrimPhysicsWorld::get();
+		bool active = false;
+
+		if (world->m_firstPersonLocalSpace) {
+			auto player = RE::PlayerCharacter::GetSingleton();
+			active = player && m_skeleton->parent &&
+			         (m_skeleton->parent == player->Get3D(false) || m_skeleton->parent == player->Get3D(true)) &&
+			         isFirstPersonView();
+		}
+
+		if (!active) {
+			if (m_localSpaceActive) {
+				// Leaving 1st person: the body snaps back to the reference, don't turn the snap into velocity.
+				m_localSpaceActive = false;
+				timeStep = RESET_PHYSICS;
+			}
+			m_localSpaceRef = nullptr;
+			return timeStep;
+		}
+
+		if (!m_localSpaceActive || timeStep <= RESET_PHYSICS) {
+			// Engaging, or resetting while engaged: snap to the current pose instead of cancelling a partial delta.
+			timeStep = RESET_PHYSICS;
+			m_localSpaceActive = true;
+			m_localSpaceRef = nullptr;  // re-resolve in case the skeleton was rebuilt
+		}
+
+		if (!m_localSpaceRef) {
+			auto ref = findNode(m_skeleton.get(), "NPC Root [Root]");
+			m_localSpaceRef = hdt::make_nismart(ref ? ref : m_skeleton.get());
+		}
+
+		const btQuaternion rotation = convertNi(m_localSpaceRef->world.rotate);
+		const btVector3 position = convertNi(m_localSpaceRef->world.translate);
+
+		if (timeStep > RESET_PHYSICS) {
+			// The reference bone's frame delta is the whole-body motion (camera turn, body-anchor correction).
+			// Moving every rigid body along with it makes it invisible to the solver: only animation-relative
+			// bone motion produces velocity. Gravity stays in world space, so hair still hangs correctly.
+			btQuaternion deltaRotation = rotation * m_localSpaceRotation.inverse();
+			btVector3 deltaPosition = (position - m_localSpacePosition) * world->m_firstPersonLocalSpaceLinear;
+			if (world->m_firstPersonLocalSpaceAngular < 1.0f) {
+				deltaRotation = btQuaternion::getIdentity().slerp(deltaRotation, world->m_firstPersonLocalSpaceAngular);
+			}
+
+			if (deltaRotation.getAngleShortestPath() > 1e-6f || deltaPosition.length2() > 1e-8f) {
+				const btMatrix3x3 basis(deltaRotation);
+				btTransform delta;
+				delta.setBasis(basis);
+				// Rotate about the reference bone, not the world origin.
+				delta.setOrigin(m_localSpacePosition - basis * m_localSpacePosition + deltaPosition);
+
+				for (auto& bone : m_bones) {
+					auto& rig = bone->m_rig;
+					rig.setWorldTransform(delta * rig.getWorldTransform());
+					rig.setInterpolationWorldTransform(delta * rig.getInterpolationWorldTransform());
+					rig.setLinearVelocity(basis * rig.getLinearVelocity());
+					rig.setAngularVelocity(basis * rig.getAngularVelocity());
+					rig.setInterpolationLinearVelocity(basis * rig.getInterpolationLinearVelocity());
+					rig.setInterpolationAngularVelocity(basis * rig.getInterpolationAngularVelocity());
+					rig.updateInertiaTensor();
+				}
+			}
+		}
+
+		m_localSpaceRotation = rotation;
+		m_localSpacePosition = position;
+		return timeStep;
+	}
+
 	float SkyrimSystem::prepareForRead(float timeStep)
 	{
 		auto newRoot = m_skeleton.get();
@@ -103,13 +196,15 @@ namespace hdt
 			m_initialized = true;
 		}
 
+		timeStep = updateLocalSpace(timeStep);
+
 		if (timeStep <= RESET_PHYSICS) {
 			if (!this->block_resetting) {
 				updateTransformUpDown(m_skeleton.get(), true);
 			}
 
 			m_lastRootRotation = convertNi(m_skeleton->world.rotate);
-		} else if (m_skeleton->parent == RE::PlayerCharacter::GetSingleton()->Get3D2()) {
+		} else if (!m_localSpaceActive && m_skeleton->parent == RE::PlayerCharacter::GetSingleton()->Get3D2()) {
 			if (SkyrimPhysicsWorld::get()->m_resetPc > 0) {
 				timeStep = RESET_PHYSICS;
 				updateTransformUpDown(m_skeleton.get(), true);
